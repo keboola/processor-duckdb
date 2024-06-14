@@ -11,8 +11,9 @@ import duckdb
 from duckdb.duckdb import DuckDBPyConnection
 
 KEY_MODE = "mode"
+KEY_IN_TABLES = "in_tables"
 KEY_QUERIES = "queries"
-KEY_TABLES = "in_tables"
+KEY_OUT_TABLES = "out_tables"
 DUCK_DB_DIR = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'duckdb')
 
 KEY_DEBUG = 'debug'
@@ -36,6 +37,8 @@ class Component(ComponentBase):
         # initialize instance parameters
 
     def run(self):
+        self.cleanup_duckdb()
+
 
         if self._config[KEY_MODE] == 'advanced':
             self.advanced_mode()
@@ -69,16 +72,39 @@ class Component(ComponentBase):
         All other tables and all files are moved to the output.
         """
         tables = self.get_input_tables_definitions()
+        in_tables = self._config[KEY_IN_TABLES]
         queries = self._config[KEY_QUERIES]
+        out_tables = self._config[KEY_OUT_TABLES]
 
         conn = self.db_connection()
 
-        for t in tables:
-            self.create_table(conn, t)
-            pass
+        if not in_tables:
+            for t in tables:
+                self.create_table(conn, t)
+
+        else:
+            for t in tables:
+                if t.name in in_tables:
+                    self.create_table(conn, t)
 
         for q in queries:
-            pass
+            conn.execute(q)
+
+        for t in tables:
+            if t.name not in out_tables:
+                out_table = self.create_out_table_definition(t.name)
+                self.move_table_to_out(t, out_table)
+
+        for o in out_tables:
+            table_meta = conn.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
+            cols = [c[0] for c in table_meta]
+
+            tm = TableMetadata()
+            tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
+            out_table = self.create_out_table_definition(f"{o}.csv", columns=cols, table_metadata=tm)
+            self.write_manifest(out_table)
+
+            conn.execute(f"COPY '{o}' TO '{out_table.full_path}' (HEADER, DELIMITER ',')")
 
         conn.close()
         self.move_files()
