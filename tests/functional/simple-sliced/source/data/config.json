@@ -3,9 +3,8 @@
                 "mode": "simple",
                 "queries":
                   {
-                    "sliced": "SELECT *, 1 as new_column FROM sliced",
+                    "sliced": "SELECT *, 1 as new_column FROM sliced"
                   }
-
             },
   "image_parameters": {},
   "action": "run",

@@ -5,7 +5,6 @@
                   {
                     "second.csv": "SELECT *, 2 as new_column FROM second"
                   }
-
             },
   "image_parameters": {},
   "action": "run",
