@@ -1,12 +1,9 @@
-import csv
-import glob
 import json
 import logging
 import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-import tempfile
 
 from keboola.component import ComponentBase, UserException
 from keboola.component.dao import TableDefinition, TableMetadata, SupportedDataTypes
@@ -72,7 +69,6 @@ class Component(ComponentBase):
         All other tables and all files are moved to the output.
         """
         tables = self.get_input_tables_definitions()
-        tables_to_process = self._config[KEY_TABLES]
         queries = self._config[KEY_QUERIES]
 
         conn = self.db_connection()
@@ -104,7 +100,6 @@ class Component(ComponentBase):
 
             conn.execute(f"COPY '{table_name}' TO '{out_table.full_path}' (HEADER, DELIMITER ',')")
 
-
     def create_table(self, conn: DuckDBPyConnection, table: TableDefinition) -> None:
 
         table_name = table.name.replace(".csv", "")
@@ -130,9 +125,9 @@ class Component(ComponentBase):
         os.makedirs(DUCK_DB_DIR, exist_ok=True)
         conn = duckdb.connect(database=os.path.join(DUCK_DB_DIR, 'db.duckdb'), read_only=False)
         conn.execute("SET temp_directory	='/tmp/dbtmp'")
-        conn.execute(f"SET threads TO 1")
-        conn.execute(f"SET memory_limit='2GB'")
-        conn.execute(f"SET max_memory='2GB'")
+        conn.execute("SET threads TO 1")
+        conn.execute("SET memory_limit='2GB'")
+        conn.execute("SET max_memory='2GB'")
         return conn
 
     def move_files(self) -> None:
