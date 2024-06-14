@@ -1,0 +1,43 @@
+track,session_id,session_name,new_column
+product_owner,1152674,Platform Introduction (PR),1
+data_specialist,1152674,Platform Introduction (PR),1
+data_specialist,1249022,SQL Syntax Training (PR),1
+data_specialist,1152675,Best Practices (PR),1
+data_specialist,1152676,Debug Techniques (PR),1
+data_specialist,1155656,Common Components and Processors (PR),1
+sr_data_developer,1152674,Platform Introduction (PR),1
+sr_data_developer,1249022,SQL Syntax Training (PR),1
+sr_data_developer,1152675,Best Practices (PR),1
+sr_data_developer,1152676,Debug Techniques (PR),1
+sr_data_developer,1174202,Generic Extractor (PR),1
+sr_data_developer,1155656,Common Components and Processors (PR),1
+sr_data_developer,1174274,KBC APIs (PR),1
+sr_data_developer,1173117,Data Science (PR),1
+platform_developer,1152674,Platform Introduction (PR),1
+platform_developer,1249022,SQL Syntax Training (PR),1
+platform_developer,1152675,Best Practices (PR),1
+platform_developer,1152676,Debug Techniques (PR),1
+platform_developer,1174202,Generic Extractor (PR),1
+platform_developer,1174222,Project Health Check (PR),1
+platform_developer,1155656,Common Components and Processors (PR),1
+platform_developer,1174224,Component Behind the Scenes (PR),1
+platform_developer,1174264,Component Creation (PR),1
+platform_developer,1174274,KBC APIs (PR),1
+platform_developer,1173117,Data Science (PR),1
+platform_developer,1173118,Data Governance (PR),1
+data_scientist,1152674,Platform Introduction (PR),1
+data_scientist,1249022,SQL Syntax Training (PR),1
+data_scientist,1152675,Best Practices (PR),1
+data_scientist,1152676,Debug Techniques (PR),1
+data_scientist,1155656,Common Components and Processors (PR),1
+data_scientist,1173117,Data Science (PR),1
+admin,1152674,Platform Introduction (PR),1
+admin,1249022,SQL Syntax Training (PR),1
+admin,1152675,Best Practices (PR),1
+admin,1152676,Debug Techniques (PR),1
+admin,1174202,Generic Extractor (PR),1
+admin,1174222,Project Health Check (PR),1
+admin,1155656,Common Components and Processors (PR),1
+admin,1174274,KBC APIs (PR),1
+admin,1173117,Data Science (PR),1
+admin,1173118,Data Governance (PR),1

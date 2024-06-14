@@ -1,0 +1,16 @@
+{
+  "parameters": {
+                "mode": "simple",
+                "queries":
+                  {
+                    "sliced": "SELECT *, 1 as new_column FROM sliced",
+                    "second.csv": "SELECT *, 2 as new_column FROM second"
+                  }
+
+            },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}
