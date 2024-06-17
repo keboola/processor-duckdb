@@ -113,8 +113,11 @@ class Component(ComponentBase):
 
         with self.db_connection() as conn:
             self.create_table(conn, input_table)
+            logging.info(f"Table {table_name} created.")
 
             conn.execute(f"CREATE OR REPLACE TABLE '{table_name}' AS {query};")
+            logging.info(f"Table {table_name} query finished.")
+
             table_meta = conn.execute(f"""DESCRIBE TABLE '{table_name}';""").fetchall()
             cols = [c[0] for c in table_meta]
 
@@ -124,6 +127,7 @@ class Component(ComponentBase):
             self.write_manifest(out_table)
 
             conn.execute(f"COPY '{table_name}' TO '{out_table.full_path}' (HEADER, DELIMITER ',')")
+            logging.info(f"Table {table_name} export finished.")
 
     def create_table(self, conn: DuckDBPyConnection, table: TableDefinition) -> None:
 
