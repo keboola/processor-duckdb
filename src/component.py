@@ -39,7 +39,6 @@ class Component(ComponentBase):
     def run(self):
         self.cleanup_duckdb()
 
-
         if self._config[KEY_MODE] == 'advanced':
             self.advanced_mode()
         else:
