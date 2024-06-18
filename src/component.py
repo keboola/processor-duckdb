@@ -37,6 +37,7 @@ class Component(ComponentBase):
         # initialize instance parameters
 
     def run(self):
+        # TODO: This is not needed even locally if we don't use persistent connection
         self.cleanup_duckdb()
 
         if self._config[KEY_MODE] == 'advanced':
@@ -111,17 +112,23 @@ class Component(ComponentBase):
     def run_simple_query(self, input_table: TableDefinition, query: str):
         table_name = input_table.name.replace(".csv", "")
 
+        # TODO: This opens and closes connection for each file which is not optimal, init the connection once globally
         with self.db_connection() as conn:
             self.create_table(conn, input_table)
             logging.info(f"Table {table_name} created.")
 
+            # TODO: Here I would use the Relation API instead of executing the query directly
+            # e.g. query = conn.sql({query})
             conn.execute(f"CREATE OR REPLACE TABLE '{table_name}' AS {query};")
             logging.info(f"Table {table_name} query finished.")
-
+            # TODO: relation has query.description that does the same thing (not sure if it executes the query or not)
+            # or we could just sniff the result csv
             table_meta = conn.execute(f"""DESCRIBE TABLE '{table_name}';""").fetchall()
             cols = [c[0] for c in table_meta]
 
             tm = TableMetadata()
+            # TODO: here we want to compare source manifest and just amend the types.
+            # type detection should be configurable, by default on
             tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
             out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm)
             self.write_manifest(out_table)
@@ -131,18 +138,35 @@ class Component(ComponentBase):
 
     def create_table(self, conn: DuckDBPyConnection, table: TableDefinition) -> None:
 
+        # TODO: you are missing the logic that distinguish between input and output mapping (header / no header)
+        # I would have this in a separate function
         table_name = table.name.replace(".csv", "")
         if table.is_sliced:
             path = f'{table.full_path}/*.csv'
         else:
             path = table.full_path
 
+        # TODO: Why is this commented, read_csv_auto is deprecated, we know the delimiter and enclosure and
+        # defining it explicitly is faster
+        # TODO: also you need to specify if it has header or not otherwise it will end up in data
         # read_csv = f"""read_csv('{path}', delim='{table.delimiter}', quote='{table.enclosure}')"""
-        read_csv = f"""read_csv_auto('{path}')"""
-        query = f"CREATE OR REPLACE TABLE '{table_name}' AS SELECT * FROM {read_csv};"
-        conn.execute(query)
-        table_meta = conn.execute(f"""DESCRIBE TABLE '{table_name}';""").fetchall()
+        # TODO: Manifest file may contain datatypes, that we want to respect so they should be added explicitly
+        # also you may consider using all_varchar option so we do not alter the data by wrong detection
+        # type detection should be configurable, by default on
 
+        read_csv = f"""read_csv_auto('{path}')"""
+        # TODO: it would be more efficient to create just a relation of the table instead of copying it
+        # e.g. you can do conn.read_csv('{path}', delim='{table.delimiter}', quote='{table.enclosure}')
+        # then you can query it using 'from {table_name}.csv but this would be issue for sliced tables
+        # so you can do conn.sql(f"CREATE TABLE '{table_name}' AS FROM {read_csv};")
+
+        query = f"CREATE OR REPLACE TABLE '{table_name}' AS SELECT * FROM {read_csv};"
+
+        conn.execute(query)
+        # TODO: relation has conn.sql().describe that does the same thing
+        # TODO: However I do not understand why would I want to do that at this point
+        table_meta = conn.execute(f"""DESCRIBE TABLE '{table_name}';""").fetchall()
+        # TODO: What is this for?
         for old, new in zip(table_meta, table.columns):
             if old[0] != new:
                 conn.execute(f"ALTER TABLE '{table_name}' RENAME COLUMN '{old[0]}' TO '{new}';")
@@ -152,8 +176,11 @@ class Component(ComponentBase):
         Returns connection to temporary DuckDB database
         """
         os.makedirs(DUCK_DB_DIR, exist_ok=True)
+        # TODO: We do not need persistent connection, temp_directoory should be enough
         conn = duckdb.connect(database=os.path.join(DUCK_DB_DIR, 'db.duckdb'), read_only=False)
+        # TODO: I would suggest using the new config={} parameter instead of executing these commands
         conn.execute("SET temp_directory	='/tmp/dbtmp'")
+        # TODO: I would try to play with this and gave it 4 threads and 512MB of memory
         conn.execute("SET threads TO 1")
         conn.execute("SET memory_limit='2GB'")
         conn.execute("SET max_memory='2GB'")
@@ -179,6 +206,8 @@ class Component(ComponentBase):
             self.write_manifest(destination)
 
     def convert_base_types(self, dtype: str) -> SupportedDataTypes:
+        # TODO: You're missing DECIMAL=> numeric types, this should map
+        # unfortunately we need to map all types https://duckdb.org/docs/sql/data_types/overview
         if dtype == 'INTEGER':
             return SupportedDataTypes.INTEGER
         elif dtype == 'FLOAT':
