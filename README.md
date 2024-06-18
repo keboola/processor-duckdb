@@ -1,14 +1,6 @@
-# Add Columns processor
+# DuckDB processor
 
-Takes all tables in `in/tables/` and adds columns with specified value. Result is moved to `out/tables/`
-
-Files folder `in/files` is moved unchanged.
-
-Manifest files are respected and transferred / modified as well.
-
-**Table of contents:**
-
-[TOC]
+DuckDB processor is a component that allows running SQL queries on DuckDB database. The component is based on the
 
 ## Configuration
 

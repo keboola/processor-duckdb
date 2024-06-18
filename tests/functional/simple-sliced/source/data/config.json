@@ -3,10 +3,8 @@
                 "mode": "simple",
                 "queries":
                   {
-                    "sliced": "SELECT *, 1 as new_column FROM sliced",
-                    "second.csv": "SELECT *, 2 as new_column FROM second"
+                    "sliced": "SELECT *, 1 as new_column FROM sliced"
                   }
-
             },
   "image_parameters": {},
   "action": "run",

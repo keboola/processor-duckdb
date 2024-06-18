@@ -3,7 +3,6 @@ import logging
 import os
 import shutil
 from csv import DictReader
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
@@ -15,18 +14,11 @@ KEY_MODE = "mode"
 KEY_IN_TABLES = "in_tables"
 KEY_QUERIES = "queries"
 KEY_OUT_TABLES = "out_tables"
+KEY_DETECT_TYPES = "detect_types"
 DUCK_DB_DIR = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'duckdb')
 
 KEY_DEBUG = 'debug'
 MANDATORY_PARS = []
-
-
-@dataclass
-class TableDef:
-    path: str
-    file_name: str
-    is_sliced: bool
-    manifest: dict = field(default_factory=dict)
 
 
 class Component(ComponentBase):
@@ -36,7 +28,6 @@ class Component(ComponentBase):
         self.validate_configuration_parameters(MANDATORY_PARS)
         self._config = self.configuration.parameters
         self._connection = self.init_connection()
-        # initialize instance parameters
 
     def run(self):
 
@@ -51,10 +42,10 @@ class Component(ComponentBase):
                 """
         os.makedirs(DUCK_DB_DIR, exist_ok=True)
         # TODO: On GCP consider changin tmp to /opt/tmp
-        config = dict(temp_directory='/tmp/dbtmp',
+        config = dict(temp_directory='/opt/tmp/dbtmp',
                       threads="4",
-                      memory_limit="2GB'",
-                      max_memory="'2GB'")
+                      memory_limit="512MB",
+                      max_memory="512MB")
         conn = duckdb.connect(config=config)
 
         return conn
@@ -88,62 +79,62 @@ class Component(ComponentBase):
         queries = self._config[KEY_QUERIES]
         out_tables = self._config[KEY_OUT_TABLES]
 
-        if not in_tables:
-            for t in tables:
+        for t in tables:
+            table_name = t.name.replace(".csv", "")
+            if not in_tables or table_name in in_tables:
                 # dynamically name the relation as a table name so it can be accessed later from the query
-                table_name = t.name.replace(".csv", "")
                 vars()[table_name] = self.create_table(t, self._config.get('detect_types', False))
-
-        else:
-            for t in tables:
-                if t.name in in_tables:
-                    # dynamically name the relation as a table name so it can be accessed later from the query
-                    table_name = t.name.replace(".csv", "")
-                    vars()[table_name] = self.create_table(t, self._config.get('detect_types', False))
+                pass
 
         for q in queries:
             self._connection.execute(q)
 
-        for t in tables:
+        for t in tables:  # TODO should we keep this in advanced mode? or configurable by parameter?
             if t.name not in out_tables:
                 out_table = self.create_out_table_definition(t.name)
                 self.move_table_to_out(t, out_table)
 
         for o in out_tables:
+            table_name = o.replace(".csv", "")
+
             table_meta = self._connection.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
             cols = [c[0] for c in table_meta]
 
             tm = TableMetadata()
             tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
-            out_table = self.create_out_table_definition(f"{o}.csv", columns=cols, table_metadata=tm)
+            out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm)
             self.write_manifest(out_table)
 
-            self._connection.execute(f"COPY '{o}' TO '{out_table.full_path}' (HEADER, DELIMITER ',')")
+            self._connection.execute(f'''COPY "{table_name}" TO "{out_table.full_path}"
+                                        (HEADER 0, DELIMITER ',', FORCE_QUOTE *)''')
 
         self._connection.close()
         self.move_files()
 
     def run_simple_query(self, input_table: TableDefinition, query: str):
-        detect_types = self._config.get('detect_types', False)
+        detect_types = self._config.get(KEY_DETECT_TYPES, False)
         # dynamically name the relation as a table name so it can be accessed later from the query
         table_name = input_table.name.replace(".csv", "")
         vars()[table_name] = self.create_table(input_table, detect_types)
 
-        logging.info(f"Table {table_name} created.")
+        logging.debug(f"Table {table_name} created.")
 
         table_meta = vars()[table_name].description
-        cols = [c[0] for c in table_meta]
-        tm = TableMetadata()
 
-        # TODO: here we want to compare source manifest and just amend the types.
-        # if detect_types=True, we should overwrite the types
-        # type detection should be configurable, by default on
-        tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
+        if detect_types:
+            tm = TableMetadata()
+            tm.add_column_data_types({column[0]: self.convert_base_types(column[1]) for column in table_meta})
+        else:
+            tm = input_table.table_metadata
+            for column in table_meta:
+                if column[0] not in tm.column_metadata:
+                    tm.add_column_data_types({column[0]: self.convert_base_types(column[1])})
+
         out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm)
 
         self.write_manifest(out_table)
-        self._connection.execute(f"COPY ({query}) TO '{out_table.full_path}' (HEADER , DELIMITER ',')")
-        logging.info(f"Table {table_name} export finished.")
+        self._connection.execute(f'COPY ({query}) TO "{out_table.full_path}" (HEADER 0, DELIMITER ",", FORCE_QUOTE *)')
+        logging.debug(f'Table {table_name} export finished.')
 
     def _get_table_header(self, t: TableDefinition):
         """
@@ -164,7 +155,7 @@ class Component(ComponentBase):
         is_input_mapping_manifest = 'uri' in t._raw_manifest
         has_header = True
         if t.is_sliced:
-            has_header = has_header
+            has_header = False  # TODO: check if this is correct
         elif t.columns and not is_input_mapping_manifest:
             has_header = False
         else:
@@ -176,14 +167,14 @@ class Component(ComponentBase):
 
         header = self._get_table_header(table)
         has_header = self._has_header_in_file(table)
+
         if table.is_sliced:
             path = f'{table.full_path}/*.csv'
         else:
             path = table.full_path
 
-        rel = self._connection.read_csv(path, delim=table.delimiter, quote=table.enclosure, header=has_header,
-                                        names=header,
-                                        all_varchar=not detect_datatypes)
+        rel = self._connection.read_csv(path, delimiter=table.delimiter, quotechar=table.enclosure, header=has_header,
+                                        names=header, all_varchar=not detect_datatypes)
 
         return rel
 
@@ -207,16 +198,19 @@ class Component(ComponentBase):
             self.write_manifest(destination)
 
     def convert_base_types(self, dtype: str) -> SupportedDataTypes:
-        # TODO: You're missing DECIMAL=> numeric types, this should map
-        # unfortunately we need to map all types https://duckdb.org/docs/sql/data_types/overview
-        if dtype == 'INTEGER':
+        if dtype in ['TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'HUGEINT',
+                     'UTINYINT', 'USMALLINT', 'UINTEGER', 'UBIGINT', 'UHUGEINT']:
             return SupportedDataTypes.INTEGER
-        elif dtype == 'FLOAT':
+        elif dtype in ['REAL', 'DECIMAL']:
+            return SupportedDataTypes.NUMERIC
+        elif dtype == 'DOUBLE':
             return SupportedDataTypes.FLOAT
         elif dtype == 'BOOLEAN':
             return SupportedDataTypes.BOOLEAN
-        elif dtype == 'TIMESTAMP':
+        elif dtype in ['TIMESTAMP', 'TIMESTAMP WITH TIME ZONE']:
             return SupportedDataTypes.TIMESTAMP
+        elif dtype == 'DATE':
+            return SupportedDataTypes.DATE
         else:
             return SupportedDataTypes.STRING
 
@@ -235,11 +229,6 @@ class Component(ComponentBase):
             shutil.copytree(t.full_path, Path(self.tables_out_path).joinpath(t.name))
         else:
             shutil.copy(t.full_path, Path(self.tables_out_path).joinpath(t.name))
-
-    def cleanup_duckdb(self):
-        # cleanup duckdb (useful for local dev,to clean resources)
-        if os.path.exists(DUCK_DB_DIR):
-            shutil.rmtree(DUCK_DB_DIR, ignore_errors=True)
 
 
 """
