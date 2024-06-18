@@ -2,13 +2,14 @@ import json
 import logging
 import os
 import shutil
+from csv import DictReader
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from keboola.component import ComponentBase, UserException
-from keboola.component.dao import TableDefinition, TableMetadata, SupportedDataTypes
 import duckdb
 from duckdb.duckdb import DuckDBPyConnection
+from keboola.component import ComponentBase, UserException
+from keboola.component.dao import TableDefinition, TableMetadata, SupportedDataTypes
 
 KEY_MODE = "mode"
 KEY_IN_TABLES = "in_tables"
@@ -34,18 +35,29 @@ class Component(ComponentBase):
         ComponentBase.__init__(self)
         self.validate_configuration_parameters(MANDATORY_PARS)
         self._config = self.configuration.parameters
+        self._connection = self.init_connection()
         # initialize instance parameters
 
     def run(self):
-        # TODO: This is not needed even locally if we don't use persistent connection
-        self.cleanup_duckdb()
 
         if self._config[KEY_MODE] == 'advanced':
             self.advanced_mode()
         else:
             self.simple_mode()
 
-        self.cleanup_duckdb()
+    def init_connection(self) -> DuckDBPyConnection:
+        """
+                Returns connection to temporary DuckDB database
+                """
+        os.makedirs(DUCK_DB_DIR, exist_ok=True)
+        # TODO: On GCP consider changin tmp to /opt/tmp
+        config = dict(temp_directory='/tmp/dbtmp',
+                      threads="4",
+                      memory_limit="2GB'",
+                      max_memory="'2GB'")
+        conn = duckdb.connect(config=config)
+
+        return conn
 
     def simple_mode(self):
         """
@@ -76,19 +88,21 @@ class Component(ComponentBase):
         queries = self._config[KEY_QUERIES]
         out_tables = self._config[KEY_OUT_TABLES]
 
-        conn = self.db_connection()
-
         if not in_tables:
             for t in tables:
-                self.create_table(conn, t)
+                # dynamically name the relation as a table name so it can be accessed later from the query
+                table_name = t.name.replace(".csv", "")
+                vars()[table_name] = self.create_table(t, self._config.get('detect_types', False))
 
         else:
             for t in tables:
                 if t.name in in_tables:
-                    self.create_table(conn, t)
+                    # dynamically name the relation as a table name so it can be accessed later from the query
+                    table_name = t.name.replace(".csv", "")
+                    vars()[table_name] = self.create_table(t, self._config.get('detect_types', False))
 
         for q in queries:
-            conn.execute(q)
+            self._connection.execute(q)
 
         for t in tables:
             if t.name not in out_tables:
@@ -96,7 +110,7 @@ class Component(ComponentBase):
                 self.move_table_to_out(t, out_table)
 
         for o in out_tables:
-            table_meta = conn.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
+            table_meta = self._connection.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
             cols = [c[0] for c in table_meta]
 
             tm = TableMetadata()
@@ -104,87 +118,74 @@ class Component(ComponentBase):
             out_table = self.create_out_table_definition(f"{o}.csv", columns=cols, table_metadata=tm)
             self.write_manifest(out_table)
 
-            conn.execute(f"COPY '{o}' TO '{out_table.full_path}' (HEADER, DELIMITER ',')")
+            self._connection.execute(f"COPY '{o}' TO '{out_table.full_path}' (HEADER, DELIMITER ',')")
 
-        conn.close()
+        self._connection.close()
         self.move_files()
 
     def run_simple_query(self, input_table: TableDefinition, query: str):
+        detect_types = self._config.get('detect_types', False)
+        # dynamically name the relation as a table name so it can be accessed later from the query
         table_name = input_table.name.replace(".csv", "")
+        vars()[table_name] = self.create_table(input_table, detect_types)
 
-        # TODO: This opens and closes connection for each file which is not optimal, init the connection once globally
-        with self.db_connection() as conn:
-            self.create_table(conn, input_table)
-            logging.info(f"Table {table_name} created.")
+        logging.info(f"Table {table_name} created.")
 
-            # TODO: Here I would use the Relation API instead of executing the query directly
-            # e.g. query = conn.sql({query})
-            conn.execute(f"CREATE OR REPLACE TABLE '{table_name}' AS {query};")
-            logging.info(f"Table {table_name} query finished.")
-            # TODO: relation has query.description that does the same thing (not sure if it executes the query or not)
-            # or we could just sniff the result csv
-            table_meta = conn.execute(f"""DESCRIBE TABLE '{table_name}';""").fetchall()
-            cols = [c[0] for c in table_meta]
+        table_meta = vars()[table_name].description
+        cols = [c[0] for c in table_meta]
+        tm = TableMetadata()
 
-            tm = TableMetadata()
-            # TODO: here we want to compare source manifest and just amend the types.
-            # type detection should be configurable, by default on
-            tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
-            out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm)
-            self.write_manifest(out_table)
+        # TODO: here we want to compare source manifest and just amend the types.
+        # if detect_types=True, we should overwrite the types
+        # type detection should be configurable, by default on
+        tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
+        out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm)
 
-            conn.execute(f"COPY '{table_name}' TO '{out_table.full_path}' (HEADER, DELIMITER ',')")
-            logging.info(f"Table {table_name} export finished.")
+        self.write_manifest(out_table)
+        self._connection.execute(f"COPY ({query}) TO '{out_table.full_path}' (HEADER , DELIMITER ',')")
+        logging.info(f"Table {table_name} export finished.")
 
-    def create_table(self, conn: DuckDBPyConnection, table: TableDefinition) -> None:
+    def _get_table_header(self, t: TableDefinition):
+        """
+        Get table header from the file or from the manifest
+        """
+        if t.is_sliced or t.columns:
+            header = t.columns
+        else:
+            with open(t.full_path, encoding='utf-8') as input:
+                delimiter = t.delimiter
+                enclosure = t.enclosure
+                reader = DictReader(input, lineterminator='\n', delimiter=delimiter, quotechar=enclosure)
+                header = reader.fieldnames
 
-        # TODO: you are missing the logic that distinguish between input and output mapping (header / no header)
-        # I would have this in a separate function
-        table_name = table.name.replace(".csv", "")
+        return header
+
+    def _has_header_in_file(self, t: TableDefinition):
+        is_input_mapping_manifest = 'uri' in t._raw_manifest
+        has_header = True
+        if t.is_sliced:
+            has_header = has_header
+        elif t.columns and not is_input_mapping_manifest:
+            has_header = False
+        else:
+            has_header = True
+        return has_header
+
+    def create_table(self, table: TableDefinition,
+                     detect_datatypes: bool = True) -> duckdb.DuckDBPyRelation:
+
+        header = self._get_table_header(table)
+        has_header = self._has_header_in_file(table)
         if table.is_sliced:
             path = f'{table.full_path}/*.csv'
         else:
             path = table.full_path
 
-        # TODO: Why is this commented, read_csv_auto is deprecated, we know the delimiter and enclosure and
-        # defining it explicitly is faster
-        # TODO: also you need to specify if it has header or not otherwise it will end up in data
-        # read_csv = f"""read_csv('{path}', delim='{table.delimiter}', quote='{table.enclosure}')"""
-        # TODO: Manifest file may contain datatypes, that we want to respect so they should be added explicitly
-        # also you may consider using all_varchar option so we do not alter the data by wrong detection
-        # type detection should be configurable, by default on
+        rel = self._connection.read_csv(path, delim=table.delimiter, quote=table.enclosure, header=has_header,
+                                        names=header,
+                                        all_varchar=not detect_datatypes)
 
-        read_csv = f"""read_csv_auto('{path}')"""
-        # TODO: it would be more efficient to create just a relation of the table instead of copying it
-        # e.g. you can do conn.read_csv('{path}', delim='{table.delimiter}', quote='{table.enclosure}')
-        # then you can query it using 'from {table_name}.csv but this would be issue for sliced tables
-        # so you can do conn.sql(f"CREATE TABLE '{table_name}' AS FROM {read_csv};")
-
-        query = f"CREATE OR REPLACE TABLE '{table_name}' AS SELECT * FROM {read_csv};"
-
-        conn.execute(query)
-        # TODO: relation has conn.sql().describe that does the same thing
-        # TODO: However I do not understand why would I want to do that at this point
-        table_meta = conn.execute(f"""DESCRIBE TABLE '{table_name}';""").fetchall()
-        # TODO: What is this for?
-        for old, new in zip(table_meta, table.columns):
-            if old[0] != new:
-                conn.execute(f"ALTER TABLE '{table_name}' RENAME COLUMN '{old[0]}' TO '{new}';")
-
-    def db_connection(self) -> DuckDBPyConnection:
-        """
-        Returns connection to temporary DuckDB database
-        """
-        os.makedirs(DUCK_DB_DIR, exist_ok=True)
-        # TODO: We do not need persistent connection, temp_directoory should be enough
-        conn = duckdb.connect(database=os.path.join(DUCK_DB_DIR, 'db.duckdb'), read_only=False)
-        # TODO: I would suggest using the new config={} parameter instead of executing these commands
-        conn.execute("SET temp_directory	='/tmp/dbtmp'")
-        # TODO: I would try to play with this and gave it 4 threads and 512MB of memory
-        conn.execute("SET threads TO 1")
-        conn.execute("SET memory_limit='2GB'")
-        conn.execute("SET max_memory='2GB'")
-        return conn
+        return rel
 
     def move_files(self) -> None:
         files = self.get_input_files_definitions()
