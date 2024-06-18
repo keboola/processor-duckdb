@@ -6,150 +6,44 @@ DuckDB processor is a component that allows running SQL queries on DuckDB databa
 
 list columns that will be added to all tables on the input. Column value is constant provided by specified function.
 
-- **name** - name of the result column
+- **mode** - if simple, query for specified tables will be processed and output as table with same name, if advanced, queries will be processed and output will be saved as specified in out_tables 
 - **function** - function (or set of nested functions) to construct the result value
+- **detect_types** - if set to true, base data types for all columns in manifest of output tables will be based on csv auto detection, if false only new columns which dtypes are not specified in manifest of input tables
 
+### Example configuration
 
-### Sample configuration
-
-```json
-{
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
+simple mode, for selected table run query and output the result as table with same name
+`{
+    "mode": "simple",
+    "queries":
       {
-        "name": "timestamp_custom",
-        "function": {
-          "function": "string_to_date",
-          "args": [
-            "yesterday",
-            "%Y-%m-%d"
-          ]
-        }
+        "products.csv" : "SELECT *, 'csv' as new_column FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id"
       }
-    ]
-  }
-}
+}`
 
-```
+advanced mode, creates [relation](https://duckdb.org/docs/api/python/relational_api) from specified input tables, run all queries in the list and saves to the output all tables specified on the out tables list
+`{
+                "mode": "advanced",
+                "in_tables": ["products"],
+                "detect_types": "true",
+                "queries":["CREATE view out AS SELECT * FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id;"],
+                "out_tables": ["out"]
+}`
 
-**Functions**
+load file from storage and export it as table
+`{
+    "mode": "advanced",
+    "queries":["CREATE view out AS SELECT * FROM '/data/in/files/test.parquet'"],
+    "out_tables": ["out"]
+}`
 
-Column values can be filled using functions. These functions can be combined, nested.
+load file from url and save it as table
+`{
+    "mode": "advanced",
+    "queries":["CREATE view cars AS SELECT * FROM 'https://github.com/keboola/developers-docs/raw/3f1e8a4331638a2300b29e63f797a1d52d64929e/integrate/variables/countries.csv'"],
+    "out_tables": ["cars"]
+}`
 
-```json
-{
-  "function": "string_to_date",
-  "args": [
-    "yesterday",
-    "%Y-%m-%d"
-  ]
-}
-```
-
-#### Function Nesting
-
-Nesting of functions is supported:
-
-```json
-{
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
-      {
-        "name": "timestamp_custom",
-        "function": {
-          "function": "concat",
-          "args": [
-            "custom_timestamp_",
-            {
-              "function": "string_to_date",
-              "args": [
-                "yesterday",
-                "%Y-%m-%d"
-              ]
-            }
-          ]
-        }
-      }
-    ]
-  }
-}
-```
-
-It todays UTC time is `2022-01-04`, the above will result in column value `custom_timestamp_2022-01-03`
-
-#### string_to_date
-
-Function converting string value into a datestring in specified format. The value may be either date in `YYYY-MM-DD`
-format, or a relative period e.g. `5 hours ago`, `yesterday`,`3 days ago`, `4 months ago`, `2 years ago`, `today`.
-
-**The resulting relative time is in UTC timezone**
-
-The result is returned as a date string in the specified format, by default `%Y-%m-%d`
-
-The function takes two arguments:
-
-1. [REQ] Date string
-2. [OPT] result date format. The format should be defined as in http://strftime.org/
-
-**Example**
-
-```json
-{
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
-      {
-        "name": "timestamp_custom",
-        "function": {
-          "function": "string_to_date",
-          "args": [
-            "yesterday",
-            "%Y-%m-%d"
-          ]
-        }
-      }
-    ]
-  }
-}
-```
-
-#### concat
-
-Concatenate an array of strings.
-
-The function takes an array of strings to concatenate as an argument
-
-**Example**
-
-```json
-{
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
-      {
-        "name": "url_concat",
-        "function": {
-          "function": "concat",
-          "args": [
-            "http://example.com",
-            "/test"
-          ]
-        }
-      }
-    ]
-  }
-}
-```
 
 # Development
 
