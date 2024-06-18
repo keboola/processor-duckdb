@@ -31,7 +31,7 @@ class Component(ComponentBase):
 
     def run(self):
 
-        if self._config[KEY_MODE] == 'advanced':
+        if self._config.get(KEY_MODE) == 'advanced':
             self.advanced_mode()
         else:
             self.simple_mode()
@@ -57,11 +57,14 @@ class Component(ComponentBase):
         All other tables and all files are moved to the output.
         """
         tables = self.get_input_tables_definitions()
-        queries = self._config[KEY_QUERIES]
+        queries_full = self._config.get(KEY_QUERIES)
+
+        queries = {key.replace(".csv", ""): value for key, value in queries_full.items()}
 
         for t in tables:
-            if t.name in queries.keys():
-                self.run_simple_query(t, queries[t.name])
+            table_name = t.name.replace(".csv", "")
+            if table_name in queries:
+                self.run_simple_query(t, queries[table_name])
 
             else:
                 out_table = self.create_out_table_definition(t.name)
@@ -75,15 +78,15 @@ class Component(ComponentBase):
         All other tables and all files are moved to the output.
         """
         tables = self.get_input_tables_definitions()
-        in_tables = self._config[KEY_IN_TABLES]
-        queries = self._config[KEY_QUERIES]
-        out_tables = self._config[KEY_OUT_TABLES]
+        in_tables = self._config.get(KEY_IN_TABLES)
+        queries = self._config.get(KEY_QUERIES)
+        out_tables = self._config.get(KEY_OUT_TABLES)
 
         for t in tables:
             table_name = t.name.replace(".csv", "")
             if not in_tables or table_name in in_tables:
                 # dynamically name the relation as a table name so it can be accessed later from the query
-                vars()[table_name] = self.create_table(t, self._config.get('detect_types', False))
+                vars()[table_name] = self.create_table(t, self._config.get(KEY_DETECT_TYPES, False))
                 pass
 
         for q in queries:
@@ -106,7 +109,7 @@ class Component(ComponentBase):
             self.write_manifest(out_table)
 
             self._connection.execute(f'''COPY "{table_name}" TO "{out_table.full_path}"
-                                        (HEADER 0, DELIMITER ',', FORCE_QUOTE *)''')
+                                        (HEADER, DELIMITER ',', FORCE_QUOTE *)''')
 
         self._connection.close()
         self.move_files()
@@ -119,7 +122,7 @@ class Component(ComponentBase):
 
         logging.debug(f"Table {table_name} created.")
 
-        table_meta = vars()[table_name].description
+        table_meta = self._connection.execute(f'DESCRIBE {query}').fetchall()
 
         if detect_types:
             tm = TableMetadata()
@@ -133,7 +136,7 @@ class Component(ComponentBase):
         out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm)
 
         self.write_manifest(out_table)
-        self._connection.execute(f'COPY ({query}) TO "{out_table.full_path}" (HEADER 0, DELIMITER ",", FORCE_QUOTE *)')
+        self._connection.execute(f'COPY ({query}) TO "{out_table.full_path}" (HEADER, DELIMITER ",", FORCE_QUOTE *)')
         logging.debug(f'Table {table_name} export finished.')
 
     def _get_table_header(self, t: TableDefinition):
