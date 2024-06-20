@@ -1,48 +1,80 @@
 # DuckDB processor
 
-DuckDB processor is a component that allows running SQL queries on DuckDB database. The component is based on the
+DuckDB processor is a component that allows running SQL queries on DuckDB database. For more information about DuckDB, please visit the [DuckDB Docs website](https://duckdb.org/docs/).
 
 ## Configuration
 
-list columns that will be added to all tables on the input. Column value is constant provided by specified function.
+Component supports two modes of operation, simple and advanced.
+- **mode** - "simple" (default) / "advanced"
 
-- **mode** - if simple, query for specified tables will be processed and output as table with same name, if advanced, queries will be processed and output will be saved as specified in out_tables 
-- **function** - function (or set of nested functions) to construct the result value
-- **detect_types** - if set to true, base data types for all columns in manifest of output tables will be based on csv auto detection, if false only new columns which dtypes are not specified in manifest of input tables
 
-### Example configuration
+### Simple mode
+In simple mode, each query operates on a single input table (along with an arbitrary number of files), and the query output is exported using the name of the input table.
 
-simple mode, for selected table run query and output the result as table with same name
-`{
+In basic mode, you have the option to utilize the following parameters:
+- **detect_types** - false (default) / true
+  - When set to true, data types for all columns will be inferred. If set to false, only new columns or columns without specified data types in the input manifest will be inferred.
+- **queries** - A dictionary of queries to be executed. The key is the name of the input table both name or name.csv are supported. The value is the SQL query to be executed.
+
+#### Example configuration
+
+```
+{
+    "queries":
+      {
+        "sales" : "SELECT sales_representative, SUM(turnover) AS total_turnover FROM sales GROUP BY sales_representative;",
+      }
+}
+```
+
+```
+{
     "mode": "simple",
     "queries":
       {
-        "products.csv" : "SELECT *, 'csv' as new_column FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id"
+        "products.csv" : "SELECT *, 'csv' as new_column FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id",
+        "categories" : "SELECT * FROM categories"
       }
-}`
+}
+```
 
-advanced mode, creates [relation](https://duckdb.org/docs/api/python/relational_api) from specified input tables, run all queries in the list and saves to the output all tables specified on the out tables list
-`{
-                "mode": "advanced",
-                "in_tables": ["products"],
-                "detect_types": "true",
-                "queries":["CREATE view out AS SELECT * FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id;"],
-                "out_tables": ["out"]
-}`
 
-load file from storage and export it as table
-`{
+### Advanced mode
+In advanced mode, first the [relations](https://duckdb.org/docs/api/python/relational_api) from specified input tables (or all input tables if not specified) are created.
+Then all defined queries are processed.
+Finally, output tables specified in out_tables are exported to storage.
+
+parameters:
+- **detect_types** - (Default: false) When set to true, data types for all columns will be inferred. If set to false, only new columns or columns without specified data types in the input manifest will be inferred.
+- **in_tables** - (Optional) A list of input tables to be used in the queries. If not specified, all input tables are used.
+- **queries** - A list of SQL queries to be executed.
+- **out_tables** - A list of output tables to be exported. Each table can be specified as a string or a dictionary. If a dictionary is used, the key is the table name and the value is a dictionary with optional parameters:
+  - **primary_keys** - A list of primary keys for the table.
+  - **incremental** - (Default: false) When set to true, the table is exported incrementally.
+
+
+#### Example configuration
+
+
+```
+{
     "mode": "advanced",
-    "queries":["CREATE view out AS SELECT * FROM '/data/in/files/test.parquet'"],
-    "out_tables": ["out"]
-}`
+    "in_tables": ["products"],
+    "detect_types": "true",
+    "queries":["CREATE view out AS SELECT * FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id;",
+               "CREATE view out2 AS SELECT * FROM products WHERE discount = TRUE;"],
+    "out_tables": ["out", {"second": { "primary_keys": ["id", "day"], "incremental": true}}],
+}
+```
 
-load file from url and save it as table
-`{
+Load file from url and save it as table
+```
+{
     "mode": "advanced",
     "queries":["CREATE view cars AS SELECT * FROM 'https://github.com/keboola/developers-docs/raw/3f1e8a4331638a2300b29e63f797a1d52d64929e/integrate/variables/countries.csv'"],
     "out_tables": ["cars"]
-}`
+}
+```
 
 
 # Development

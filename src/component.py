@@ -98,6 +98,15 @@ class Component(ComponentBase):
                 self.move_table_to_out(t, out_table)
 
         for o in out_tables:
+            if isinstance(o, dict):
+                table_name = list(o.keys())[0]
+                incremental = o[table_name].get('incremental', False)
+                primary_key = o[table_name].get('primary_key', [])
+                o = table_name
+            else:
+                incremental = False
+                primary_key = []
+
             table_name = o.replace(".csv", "")
 
             table_meta = self._connection.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
@@ -105,7 +114,8 @@ class Component(ComponentBase):
 
             tm = TableMetadata()
             tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
-            out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm)
+            out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm,
+                                                         primary_key=primary_key, incremental=incremental)
             self.write_manifest(out_table)
 
             self._connection.execute(f'''COPY "{table_name}" TO "{out_table.full_path}"
@@ -133,7 +143,9 @@ class Component(ComponentBase):
                 if column[0] not in tm.column_metadata:
                     tm.add_column_data_types({column[0]: self.convert_base_types(column[1])})
 
-        out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm)
+        out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm,
+                                                     primary_key=input_table.primary_key,
+                                                     incremental=input_table.incremental)
 
         self.write_manifest(out_table)
         self._connection.execute(f'COPY ({query}) TO "{out_table.full_path}" (HEADER, DELIMITER ",", FORCE_QUOTE *)')
