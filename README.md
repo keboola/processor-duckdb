@@ -48,7 +48,9 @@ parameters:
 - **detect_types** - (Default: false) When set to true, data types for all columns will be inferred. If set to false, only new columns or columns without specified data types in the input manifest will be inferred.
 - **in_tables** - (Optional) A list of input tables to be used in the queries. If not specified, all input tables are used.
 - **queries** - A list of SQL queries to be executed.
-- **out_tables** - A list of output tables to be exported. Each table can be specified as a string or a dictionary. If a dictionary is used, the key is the table name and the value is a dictionary with optional parameters:
+- **out_tables** - A list of output tables to be exported. Each table can be specified as a string or a dictionary. If a dictionary is used, parameters are following:
+  - **source** - (required) The name of the source table or view.
+  - **destination** - The name of the destination table in storage.
   - **primary_keys** - A list of primary keys for the table.
   - **incremental** - (Default: false) When set to true, the table is exported incrementally.
 
@@ -63,7 +65,7 @@ parameters:
     "detect_types": "true",
     "queries":["CREATE view out AS SELECT * FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id;",
                "CREATE view out2 AS SELECT * FROM products WHERE discount = TRUE;"],
-    "out_tables": ["out", {"second": { "primary_keys": ["id", "day"], "incremental": true}}],
+    "out_tables": ["out", {"source":"out2", "destination":"out.bucket.out2.csv", "primary_key": ["id"], "incremental":  true}],
 }
 ```
 

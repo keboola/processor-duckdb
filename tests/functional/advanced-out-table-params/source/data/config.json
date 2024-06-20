@@ -3,7 +3,7 @@
                 "mode": "advanced",
                 "in_tables": ["sliced"],
                 "queries":["CREATE view final AS SELECT * FROM sliced"],
-                "out_tables": [{"final": {"primary_key": ["id"], "incremental":  true}}]
+                "out_tables": [{"source":"final", "destination":"out.bucket1.final.csv", "primary_key": ["id"], "incremental":  true}]
             },
   "image_parameters": {},
   "action": "run",

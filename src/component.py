@@ -99,13 +99,18 @@ class Component(ComponentBase):
 
         for o in out_tables:
             if isinstance(o, dict):
-                table_name = list(o.keys())[0]
-                incremental = o[table_name].get('incremental', False)
-                primary_key = o[table_name].get('primary_key', [])
-                o = table_name
+                source = o.get('source')
+                if not source:
+                    raise ValueError("Missing source in out_tables definition")
+                incremental = o.get('incremental', False)
+                primary_key = o.get('primary_key', [])
+                destination = o.get('destination')
+                o = source
+
             else:
                 incremental = False
                 primary_key = []
+                destination = ''
 
             table_name = o.replace(".csv", "")
 
@@ -115,7 +120,8 @@ class Component(ComponentBase):
             tm = TableMetadata()
             tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
             out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm,
-                                                         primary_key=primary_key, incremental=incremental)
+                                                         primary_key=primary_key, incremental=incremental,
+                                                         destination=destination)
             self.write_manifest(out_table)
 
             self._connection.execute(f'''COPY "{table_name}" TO "{out_table.full_path}"
