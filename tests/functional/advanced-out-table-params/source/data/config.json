@@ -1,0 +1,13 @@
+{
+  "parameters": {
+                "mode": "advanced",
+                "in_tables": ["sliced"],
+                "queries":["CREATE view final AS SELECT * FROM sliced"],
+                "out_tables": [{"final": {"primary_key": ["id"], "incremental":  true}}]
+            },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}
