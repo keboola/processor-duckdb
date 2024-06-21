@@ -56,14 +56,17 @@ class Component(ComponentBase):
         Output is stored in the output table with the same name.
         All other tables and all files are moved to the output.
         """
+        # TODO: Add support for glob pattern.
         tables = self.get_input_tables_definitions()
         queries_full = self._config.get(KEY_QUERIES)
 
         queries = {key.replace(".csv", ""): value for key, value in queries_full.items()}
 
+        # TODO: iterate pres queriesm ne tables (cheme pouzit glob pattern)
         for t in tables:
             table_name = t.name.replace(".csv", "")
             if table_name in queries:
+                # TODO: Predat pole vsech input tabulek
                 self.run_simple_query(t, queries[table_name])
 
             else:
@@ -133,6 +136,10 @@ class Component(ComponentBase):
     def run_simple_query(self, input_table: TableDefinition, query: str):
         detect_types = self._config.get(KEY_DETECT_TYPES, False)
         # dynamically name the relation as a table name so it can be accessed later from the query
+        # TODO: Tady dostaneme pattern a list input tables.
+        #  Pokud je to pattern, tak vyzadovat explicitni nazev output tabulky a ignorovat. Jinak vzit tu jednu tabledefinition
+        #  Pokud uzivatel definuje explicitne parametry CSV (header, columns, delimiter..) tak je pouzit,
+        #  jinak vzit default nebo z manifestu.
         table_name = input_table.name.replace(".csv", "")
         vars()[table_name] = self.create_table(input_table, detect_types)
 
@@ -185,7 +192,10 @@ class Component(ComponentBase):
 
     def create_table(self, table: TableDefinition,
                      detect_datatypes: bool = True) -> duckdb.DuckDBPyRelation:
+        # TODO: tahle metoda by mela dostat rovnou pattern a parametry,
+        #  nebo proste ten pattern dat do nazvu TableDefinition.
 
+        # TODO: ten header muze byt definovany i uzivatelem
         header = self._get_table_header(table)
         has_header = self._has_header_in_file(table)
 
@@ -193,7 +203,8 @@ class Component(ComponentBase):
             path = f'{table.full_path}/*.csv'
         else:
             path = table.full_path
-
+        # TODO: Add support for read_csv options defined by user mainly: filename, skip, timestampformat, dateformat,
+        #  CSV options (sep, quote), header and columns
         rel = self._connection.read_csv(path, delimiter=table.delimiter, quotechar=table.enclosure, header=has_header,
                                         names=header, all_varchar=not detect_datatypes)
 
