@@ -92,12 +92,26 @@ class Component(ComponentBase):
         for q in queries:
             self._connection.execute(q)
 
-        for t in tables:  # TODO should we keep this in advanced mode? or configurable by parameter?
+        for t in tables:
             if t.name not in out_tables:
                 out_table = self.create_out_table_definition(t.name)
                 self.move_table_to_out(t, out_table)
 
         for o in out_tables:
+            if isinstance(o, dict):
+                source = o.get('source')
+                if not source:
+                    raise ValueError("Missing source in out_tables definition")
+                incremental = o.get('incremental', False)
+                primary_key = o.get('primary_key', [])
+                destination = o.get('destination')
+                o = source
+
+            else:
+                incremental = False
+                primary_key = []
+                destination = ''
+
             table_name = o.replace(".csv", "")
 
             table_meta = self._connection.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
@@ -105,7 +119,9 @@ class Component(ComponentBase):
 
             tm = TableMetadata()
             tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
-            out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm)
+            out_table = self.create_out_table_definition(f"{table_name}.csv", columns=cols, table_metadata=tm,
+                                                         primary_key=primary_key, incremental=incremental,
+                                                         destination=destination)
             self.write_manifest(out_table)
 
             self._connection.execute(f'''COPY "{table_name}" TO "{out_table.full_path}"
@@ -133,7 +149,9 @@ class Component(ComponentBase):
                 if column[0] not in tm.column_metadata:
                     tm.add_column_data_types({column[0]: self.convert_base_types(column[1])})
 
-        out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm)
+        out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm,
+                                                     primary_key=input_table.primary_key,
+                                                     incremental=input_table.incremental)
 
         self.write_manifest(out_table)
         self._connection.execute(f'COPY ({query}) TO "{out_table.full_path}" (HEADER, DELIMITER ",", FORCE_QUOTE *)')
@@ -158,7 +176,7 @@ class Component(ComponentBase):
         is_input_mapping_manifest = 'uri' in t._raw_manifest
         has_header = True
         if t.is_sliced:
-            has_header = False  # TODO: check if this is correct
+            has_header = False
         elif t.columns and not is_input_mapping_manifest:
             has_header = False
         else:

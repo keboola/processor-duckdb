@@ -1,155 +1,83 @@
 # DuckDB processor
 
-DuckDB processor is a component that allows running SQL queries on DuckDB database. The component is based on the
+DuckDB processor is a component that allows running SQL queries on DuckDB database. For more information about DuckDB, please visit the [DuckDB Docs website](https://duckdb.org/docs/).
 
 ## Configuration
 
-list columns that will be added to all tables on the input. Column value is constant provided by specified function.
-
-- **name** - name of the result column
-- **function** - function (or set of nested functions) to construct the result value
+Component supports two modes of operation, simple and advanced.
+- **mode** - "simple" (default) / "advanced"
 
 
-### Sample configuration
+### Simple mode
+In simple mode, each query operates on a single input table (along with an arbitrary number of files), and the query output is exported using the name of the input table.
 
-```json
+In basic mode, you have the option to utilize the following parameters:
+- **detect_types** - false (default) / true
+  - When set to true, data types for all columns will be inferred. If set to false, only new columns or columns without specified data types in the input manifest will be inferred.
+- **queries** - A dictionary of queries to be executed. The key is the name of the input table both name or name.csv are supported. The value is the SQL query to be executed.
+
+#### Example configuration
+
+```
 {
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
+    "queries":
       {
-        "name": "timestamp_custom",
-        "function": {
-          "function": "string_to_date",
-          "args": [
-            "yesterday",
-            "%Y-%m-%d"
-          ]
-        }
+        "sales" : "SELECT sales_representative, SUM(turnover) AS total_turnover FROM sales GROUP BY sales_representative;",
       }
-    ]
-  }
-}
-
-```
-
-**Functions**
-
-Column values can be filled using functions. These functions can be combined, nested.
-
-```json
-{
-  "function": "string_to_date",
-  "args": [
-    "yesterday",
-    "%Y-%m-%d"
-  ]
 }
 ```
 
-#### Function Nesting
-
-Nesting of functions is supported:
-
-```json
+```
 {
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
+    "mode": "simple",
+    "queries":
       {
-        "name": "timestamp_custom",
-        "function": {
-          "function": "concat",
-          "args": [
-            "custom_timestamp_",
-            {
-              "function": "string_to_date",
-              "args": [
-                "yesterday",
-                "%Y-%m-%d"
-              ]
-            }
-          ]
-        }
+        "products.csv" : "SELECT *, 'csv' as new_column FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id",
+        "categories" : "SELECT * FROM categories"
       }
-    ]
-  }
 }
 ```
 
-It todays UTC time is `2022-01-04`, the above will result in column value `custom_timestamp_2022-01-03`
 
-#### string_to_date
+### Advanced mode
+In advanced mode, first the [relations](https://duckdb.org/docs/api/python/relational_api) from specified input tables (or all input tables if not specified) are created.
+Then all defined queries are processed.
+Finally, output tables specified in out_tables are exported to storage.
 
-Function converting string value into a datestring in specified format. The value may be either date in `YYYY-MM-DD`
-format, or a relative period e.g. `5 hours ago`, `yesterday`,`3 days ago`, `4 months ago`, `2 years ago`, `today`.
+parameters:
+- **detect_types** - (Default: false) When set to true, data types for all columns will be inferred. If set to false, only new columns or columns without specified data types in the input manifest will be inferred.
+- **in_tables** - (Optional) A list of input tables to be used in the queries. If not specified, all input tables are used.
+- **queries** - A list of SQL queries to be executed.
+- **out_tables** - A list of output tables to be exported. Each table can be specified as a string or a dictionary. If a dictionary is used, parameters are following:
+  - **source** - (required) The name of the source table or view.
+  - **destination** - The name of the destination table in storage.
+  - **primary_keys** - A list of primary keys for the table.
+  - **incremental** - (Default: false) When set to true, the table is exported incrementally.
 
-**The resulting relative time is in UTC timezone**
 
-The result is returned as a date string in the specified format, by default `%Y-%m-%d`
+#### Example configuration
 
-The function takes two arguments:
 
-1. [REQ] Date string
-2. [OPT] result date format. The format should be defined as in http://strftime.org/
-
-**Example**
-
-```json
+```
 {
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
-      {
-        "name": "timestamp_custom",
-        "function": {
-          "function": "string_to_date",
-          "args": [
-            "yesterday",
-            "%Y-%m-%d"
-          ]
-        }
-      }
-    ]
-  }
+    "mode": "advanced",
+    "in_tables": ["products"],
+    "detect_types": "true",
+    "queries":["CREATE view out AS SELECT * FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id;",
+               "CREATE view out2 AS SELECT * FROM products WHERE discount = TRUE;"],
+    "out_tables": ["out", {"source":"out2", "destination":"out.bucket.out2.csv", "primary_key": ["id"], "incremental":  true}],
 }
 ```
 
-#### concat
-
-Concatenate an array of strings.
-
-The function takes an array of strings to concatenate as an argument
-
-**Example**
-
-```json
+Load file from url and save it as table
+```
 {
-  "definition": {
-    "component": "kds-team.processor-add-columns"
-  },
-  "parameters": {
-    "columns": [
-      {
-        "name": "url_concat",
-        "function": {
-          "function": "concat",
-          "args": [
-            "http://example.com",
-            "/test"
-          ]
-        }
-      }
-    ]
-  }
+    "mode": "advanced",
+    "queries":["CREATE view cars AS SELECT * FROM 'https://github.com/keboola/developers-docs/raw/3f1e8a4331638a2300b29e63f797a1d52d64929e/integrate/variables/countries.csv'"],
+    "out_tables": ["cars"]
 }
 ```
+
 
 # Development
 

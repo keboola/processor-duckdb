@@ -8,6 +8,6 @@ __pycache__/
 /example/.pydevproject
 
 # kbc datafolder
-data/
+/data
 /src/test.py
 test.py
