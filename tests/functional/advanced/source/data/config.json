@@ -1,9 +1,9 @@
 {
   "parameters": {
                 "mode": "advanced",
-                "in_tables": ["sliced", "days"],
+                "input": [{"input_pattern":"sliced"},{"input_pattern":"days.csv", "duckdb_destination":"days"}],
                 "queries":["CREATE view final AS SELECT * FROM sliced LEFT JOIN days USING (id) ORDER BY id"],
-                "out_tables": ["final"]
+                "output": ["final"]
             },
   "image_parameters": {},
   "action": "run",

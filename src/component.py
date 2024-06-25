@@ -9,11 +9,13 @@ import duckdb
 from duckdb.duckdb import DuckDBPyConnection
 from keboola.component import ComponentBase, UserException
 from keboola.component.dao import TableDefinition, TableMetadata, SupportedDataTypes
+import fnmatch
+from typing import Union
 
 KEY_MODE = "mode"
-KEY_IN_TABLES = "in_tables"
+KEY_IN_TABLES = "input"
 KEY_QUERIES = "queries"
-KEY_OUT_TABLES = "out_tables"
+KEY_OUT_TABLES = "output"
 KEY_DETECT_TYPES = "detect_types"
 DUCK_DB_DIR = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'duckdb')
 
@@ -28,6 +30,7 @@ class Component(ComponentBase):
         self.validate_configuration_parameters(MANDATORY_PARS)
         self._config = self.configuration.parameters
         self._connection = self.init_connection()
+        self._in_tables = self.get_input_tables_definitions()
 
     def run(self):
 
@@ -56,23 +59,20 @@ class Component(ComponentBase):
         Output is stored in the output table with the same name.
         All other tables and all files are moved to the output.
         """
-        # TODO: Add support for glob pattern.
-        tables = self.get_input_tables_definitions()
-        queries_full = self._config.get(KEY_QUERIES)
+        queries = self._config.get(KEY_QUERIES)
 
-        queries = {key.replace(".csv", ""): value for key, value in queries_full.items()}
+        matched_tables = []
+        for q in queries:
+            self.run_simple_query(q)
 
-        # TODO: iterate pres queriesm ne tables (cheme pouzit glob pattern)
-        for t in tables:
-            table_name = t.name.replace(".csv", "")
-            if table_name in queries:
-                # TODO: Predat pole vsech input tabulek
-                self.run_simple_query(t, queries[table_name])
+            for t in self._in_tables:
+                if fnmatch.fnmatch(t.name, q["input"]):
+                    matched_tables.append(t)
 
-            else:
-                out_table = self.create_out_table_definition(t.name)
-                self.move_table_to_out(t, out_table)
-        self.move_files()
+        for t in [tb for tb in self._in_tables if tb not in matched_tables] :
+            out_table = self.create_out_table_definition(t.name)
+            self.move_table_to_out(t, out_table)
+            self.move_files()
 
     def advanced_mode(self):
         """
@@ -80,34 +80,38 @@ class Component(ComponentBase):
         Output is stored in the output table with the same name.
         All other tables and all files are moved to the output.
         """
-        tables = self.get_input_tables_definitions()
         in_tables = self._config.get(KEY_IN_TABLES)
         queries = self._config.get(KEY_QUERIES)
         out_tables = self._config.get(KEY_OUT_TABLES)
 
-        for t in tables:
-            table_name = t.name.replace(".csv", "")
-            if not in_tables or table_name in in_tables:
-                # dynamically name the relation as a table name so it can be accessed later from the query
-                vars()[table_name] = self.create_table(t, self._config.get(KEY_DETECT_TYPES, False))
-                pass
+        matched_tables = []
+        for t in in_tables:
+            self.create_table(t)
+
+            pattern = t
+            if isinstance(t, dict):
+                pattern = t.get('input_pattern')
+
+            for table in self._in_tables:
+                if fnmatch.fnmatch(table.name, pattern):
+                    matched_tables.append(t)
+
+        for t in [tb for tb in self._in_tables if tb not in matched_tables]:
+            out_table = self.create_out_table_definition(t.name)
+            self.move_table_to_out(t, out_table)
+            self.move_files()
 
         for q in queries:
             self._connection.execute(q)
 
-        for t in tables:
-            if t.name not in out_tables:
-                out_table = self.create_out_table_definition(t.name)
-                self.move_table_to_out(t, out_table)
-
         for o in out_tables:
             if isinstance(o, dict):
-                source = o.get('source')
+                source = o.get('duckdb_source')
                 if not source:
                     raise ValueError("Missing source in out_tables definition")
                 incremental = o.get('incremental', False)
                 primary_key = o.get('primary_key', [])
-                destination = o.get('destination')
+                destination = o.get('kbc_destination')
                 o = source
 
             else:
@@ -133,35 +137,42 @@ class Component(ComponentBase):
         self._connection.close()
         self.move_files()
 
-    def run_simple_query(self, input_table: TableDefinition, query: str):
-        detect_types = self._config.get(KEY_DETECT_TYPES, False)
-        # dynamically name the relation as a table name so it can be accessed later from the query
-        # TODO: Tady dostaneme pattern a list input tables.
-        #  Pokud je to pattern, tak vyzadovat explicitni nazev output tabulky a ignorovat. Jinak vzit tu jednu tabledefinition
-        #  Pokud uzivatel definuje explicitne parametry CSV (header, columns, delimiter..) tak je pouzit,
-        #  jinak vzit default nebo z manifestu.
-        table_name = input_table.name.replace(".csv", "")
-        vars()[table_name] = self.create_table(input_table, detect_types)
+    def run_simple_query(self, q: dict):
+        self.create_table(q["input"])
 
-        logging.debug(f"Table {table_name} created.")
+        incremental = False
+        primary_key = []
 
-        table_meta = self._connection.execute(f'DESCRIBE {query}').fetchall()
+        if isinstance(q.get("output"), dict):
+            incremental = q["output"].get('incremental', False)
+            primary_key = q["output"].get('primary_key', [])
 
-        if detect_types:
-            tm = TableMetadata()
-            tm.add_column_data_types({column[0]: self.convert_base_types(column[1]) for column in table_meta})
+        table_meta = self._connection.execute(f"""DESCRIBE {q["query"]};""").fetchall()
+        cols = [c[0] for c in table_meta]
+
+        tm = TableMetadata()
+        tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
+
+        if isinstance(q.get("input"), dict):
+            destination = q.get("input", {}).get('duckdb_destination') or q.get("input", {}).get("input_pattern")
         else:
-            tm = input_table.table_metadata
-            for column in table_meta:
-                if column[0] not in tm.column_metadata:
-                    tm.add_column_data_types({column[0]: self.convert_base_types(column[1])})
+            destination = q.get("input")
 
-        out_table = self.create_out_table_definition(f"{table_name}.csv", table_metadata=tm,
-                                                     primary_key=input_table.primary_key,
-                                                     incremental=input_table.incremental)
+        if isinstance(q.get("output"), dict):
+            destination = q.get("output", {}).get("kbc_destination") or destination
+        elif isinstance(q.get("output"), str):
+            destination = q.get("output")
+
+        table_name = f"{destination.replace(".csv", "")}.csv"
+
+        out_table = self.create_out_table_definition(table_name, columns=cols,
+                                                     table_metadata=tm, primary_key=primary_key,
+                                                     incremental=incremental, destination=destination)
 
         self.write_manifest(out_table)
-        self._connection.execute(f'COPY ({query}) TO "{out_table.full_path}" (HEADER, DELIMITER ",", FORCE_QUOTE *)')
+        self._connection.execute(f'COPY ({q["query"]}) TO "{out_table.full_path}"'
+                                 f'(HEADER, DELIMITER ",", FORCE_QUOTE *)')
+
         logging.debug(f'Table {table_name} export finished.')
 
     def _get_table_header(self, t: TableDefinition):
@@ -190,25 +201,56 @@ class Component(ComponentBase):
             has_header = True
         return has_header
 
-    def create_table(self, table: TableDefinition,
-                     detect_datatypes: bool = True) -> duckdb.DuckDBPyRelation:
-        # TODO: tahle metoda by mela dostat rovnou pattern a parametry,
-        #  nebo proste ten pattern dat do nazvu TableDefinition.
+    def create_table(self, input_table_config: Union[dict, str]) -> None:
+        itc = input_table_config
 
-        # TODO: ten header muze byt definovany i uzivatelem
-        header = self._get_table_header(table)
-        has_header = self._has_header_in_file(table)
+        if isinstance(itc, str):
+            itc = {'input_pattern': itc}
 
-        if table.is_sliced:
-            path = f'{table.full_path}/*.csv'
+        if any(char in itc.get("input_pattern") for char in "*?["):
+            if not itc.get('duckdb_destination'):
+                raise UserException("Destination must be set if input path contains pattern.")
+            destination_table_name = [itc["duckdb_destination"]]
+            path = itc["input_pattern"]
+            table = {}
+            has_header = False
+            header = False
         else:
-            path = table.full_path
-        # TODO: Add support for read_csv options defined by user mainly: filename, skip, timestampformat, dateformat,
-        #  CSV options (sep, quote), header and columns
-        rel = self._connection.read_csv(path, delimiter=table.delimiter, quotechar=table.enclosure, header=has_header,
-                                        names=header, all_varchar=not detect_datatypes)
+            destination_table_name = itc.get('duckdb_destination') or itc["input_pattern"]
 
-        return rel
+            matched_tables = [i for i in self._in_tables if i.name == itc["input_pattern"]]
+
+            if len(matched_tables) == 0:
+                raise UserException(f"Table {itc['input_pattern']} not found.")
+            elif len(matched_tables) > 1:
+                raise UserException(f"Multiple input tables with name {itc['input_pattern']} found.")
+
+            table = matched_tables[0]
+            header = itc.get('column_names') or self._get_table_header(table)
+            has_header = self._has_header_in_file(table)
+
+            if table.is_sliced:
+                path = f'{table.full_path}/*.csv'
+            else:
+                path = table.full_path
+
+        delimiter = itc.get('delimiter') or table.delimiter or ','
+        quote_char = itc.get('quotechar')
+        has_header = itc.get('has_header') or has_header
+        header = itc.get('column_names') or header
+        skip = itc.get('skip_lines')
+        date_format = itc.get('date_format')
+        timestamp_format = itc.get('timestamp_format')
+        add_filename_col = itc.get('add_filename_column')
+        detect_dtypes = itc.get('detect_dtypes')
+
+        # dynamically name the relation as a table name so it can be accessed later from the query
+        globals()[destination_table_name] = self._connection.read_csv(
+            path_or_buffer=path, delimiter=delimiter, quotechar=quote_char, header=has_header, names=header, skiprows=skip,
+            date_format=date_format, timestamp_format=timestamp_format, filename=add_filename_col,
+            all_varchar=not detect_dtypes)
+
+        logging.debug(f"Table {destination_table_name} created.")
 
     def move_files(self) -> None:
         files = self.get_input_files_definitions()

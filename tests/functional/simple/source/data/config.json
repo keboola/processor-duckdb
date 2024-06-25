@@ -1,10 +1,11 @@
 {
   "parameters": {
                 "mode": "simple",
-                "queries":
+                "queries":[
                   {
-                    "second.csv": "SELECT *, 2 as new_column FROM second"
-                  }
+                    "input": "second.csv",
+                    "query": "SELECT *, 2 as new_column FROM second.csv"
+                  }]
             },
   "image_parameters": {},
   "action": "run",
