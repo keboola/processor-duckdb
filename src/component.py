@@ -69,7 +69,7 @@ class Component(ComponentBase):
                 if fnmatch.fnmatch(t.name, q["input"]):
                     matched_tables.append(t)
 
-        for t in [tb for tb in self._in_tables if tb not in matched_tables] :
+        for t in [tb for tb in self._in_tables if tb not in matched_tables]:
             out_table = self.create_out_table_definition(t.name)
             self.move_table_to_out(t, out_table)
             self.move_files()
@@ -246,8 +246,8 @@ class Component(ComponentBase):
 
         # dynamically name the relation as a table name so it can be accessed later from the query
         globals()[destination_table_name] = self._connection.read_csv(
-            path_or_buffer=path, delimiter=delimiter, quotechar=quote_char, header=has_header, names=header, skiprows=skip,
-            date_format=date_format, timestamp_format=timestamp_format, filename=add_filename_col,
+            path_or_buffer=path, delimiter=delimiter, quotechar=quote_char, header=has_header, names=header,
+            skiprows=skip, date_format=date_format, timestamp_format=timestamp_format, filename=add_filename_col,
             all_varchar=not detect_dtypes)
 
         logging.debug(f"Table {destination_table_name} created.")
