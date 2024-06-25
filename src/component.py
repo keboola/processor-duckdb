@@ -45,7 +45,7 @@ class Component(ComponentBase):
                 """
         os.makedirs(DUCK_DB_DIR, exist_ok=True)
         # TODO: On GCP consider changin tmp to /opt/tmp
-        config = dict(temp_directory='/opt/tmp/dbtmp',
+        config = dict(temp_directory=DUCK_DB_DIR,
                       threads="4",
                       memory_limit="512MB",
                       max_memory="512MB")
@@ -153,15 +153,17 @@ class Component(ComponentBase):
         tm = TableMetadata()
         tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
 
-        if isinstance(q.get("input"), dict):
-            destination = q.get("input", {}).get('duckdb_destination') or q.get("input", {}).get("input_pattern")
+        input_data = q.get("input")
+        output_data = q.get("output")
+        if isinstance(input_data, dict):
+            destination = input_data.get('duckdb_destination') or input_data.get("input_pattern")
         else:
-            destination = q.get("input")
+            destination = input_data
 
-        if isinstance(q.get("output"), dict):
-            destination = q.get("output", {}).get("kbc_destination") or destination
-        elif isinstance(q.get("output"), str):
-            destination = q.get("output")
+        if isinstance(output_data, dict):
+            destination = output_data.get("kbc_destination") or destination
+        elif isinstance(output_data, str):
+            destination = output_data
 
         table_name = f"{destination.replace(".csv", "")}.csv"
 

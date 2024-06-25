@@ -9,32 +9,64 @@ Component supports two modes of operation, simple and advanced.
 
 
 ### Simple mode
-In simple mode, each query operates on a single input table (along with an arbitrary number of files), and the query output is exported using the name of the input table.
+In simple mode, each query operates on a single table in DuckDB which can be created from table defined by name, or by multiple tables matching pattern (along with an arbitrary number of files), and the query output is exported using the name of the input table.
 
-In basic mode, you have the option to utilize the following parameters:
-- **detect_types** - false (default) / true
-  - When set to true, data types for all columns will be inferred. If set to false, only new columns or columns without specified data types in the input manifest will be inferred.
-- **queries** - A dictionary of queries to be executed. The key is the name of the input table both name or name.csv are supported. The value is the SQL query to be executed.
+In simple mode, you have the option to utilize the following parameters:
+- **queries** - A list of queries to be executed each query contains:
+  - **input** - string of name or pattern, or object containing following parameters:
+    - **input_pattern** - (required) name of table or [glob pattern](https://duckdb.org/docs/data/multiple_files/overview#glob-syntax)
+    - **duckdb_destination** - name of the table in DuckDB
+    - **detect_dtypes** - boolean
+    - **skip_lines** - number of lines to skip
+    - **delimiter** - string of delimiter
+    - **quotechar** - string of quotechar
+    - **column_names** - list of column names
+    - **date_format** - string of date format
+    - **timestamp_format** - string of timestamp format
+- **query** (required) query to be executed
+- **output** - string of output table name or object containing following parameters:
+  - **kbc_destination** - name of the output table
+  - **primary_key** - list of primary keys
+  - **incremental** - boolean
 
 #### Example configuration
 
 ```
 {
-    "queries":
+    "queries":[
       {
-        "sales" : "SELECT sales_representative, SUM(turnover) AS total_turnover FROM sales GROUP BY sales_representative;",
-      }
+        "input": "sales",
+        "query" : "SELECT sales_representative, SUM(turnover) AS total_turnover FROM sales GROUP BY sales_representative;",
+      }]
 }
 ```
 
 ```
 {
     "mode": "simple",
-    "queries":
+    "queries":[
       {
-        "products.csv" : "SELECT *, 'csv' as new_column FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id",
-        "categories" : "SELECT * FROM categories"
-      }
+        "input": {
+          "input_pattern": "/data/in/files/*.csv",
+          "duckdb_destination": "sales",
+          "detect_dtypes": true,
+          "skip_lines": 1,
+          "delimiter": ",",
+          "quotechar": "\"",
+          "column_names": ["id", "name", "turnover", "sales_representative", "date"],
+          "date_format": "YYYY-MM-DD",
+          "timestamp_format": "YYYY-MM-DD HH:MM:SS"
+        },
+        "query" : "SELECT *, 'csv' as new_column FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id",
+        "output": {
+          "kbc_destination": "out-sales",
+          "primary_key": ["id"],
+          "incremental": true
+        }
+      },{
+        "input": "categories",
+        "query" : "SELECT * FROM categories"
+      }]
 }
 ```
 
@@ -61,11 +93,11 @@ parameters:
 ```
 {
     "mode": "advanced",
-    "in_tables": ["products"],
+    "input": ["products"],
     "detect_types": "true",
     "queries":["CREATE view out AS SELECT * FROM products AS p LEFT JOIN '/data/in/files/categories.parquet' AS cat on p.category = cat.id ORDER BY p.id;",
                "CREATE view out2 AS SELECT * FROM products WHERE discount = TRUE;"],
-    "out_tables": ["out", {"source":"out2", "destination":"out.bucket.out2.csv", "primary_key": ["id"], "incremental":  true}],
+    "output": ["out", {"source":"out2", "destination":"out.bucket.out2.csv", "primary_key": ["id"], "incremental":  true}],
 }
 ```
 
@@ -74,7 +106,7 @@ Load file from url and save it as table
 {
     "mode": "advanced",
     "queries":["CREATE view cars AS SELECT * FROM 'https://github.com/keboola/developers-docs/raw/3f1e8a4331638a2300b29e63f797a1d52d64929e/integrate/variables/countries.csv'"],
-    "out_tables": ["cars"]
+    "output": ["cars"]
 }
 ```
 
