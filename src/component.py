@@ -65,8 +65,13 @@ class Component(ComponentBase):
         for q in queries:
             self.run_simple_query(q)
 
+            if isinstance(q[KEY_IN_TABLES], dict):
+                pattern = q[KEY_IN_TABLES].get('input_pattern')
+            else:
+                pattern = q[KEY_IN_TABLES]
+
             for t in self._in_tables:
-                if fnmatch.fnmatch(t.name, q["input"]):
+                if fnmatch.fnmatch(t.name, pattern):
                     matched_tables.append(t)
 
         for t in [tb for tb in self._in_tables if tb not in matched_tables]:
@@ -138,14 +143,14 @@ class Component(ComponentBase):
         self.move_files()
 
     def run_simple_query(self, q: dict):
-        self.create_table(q["input"])
+        self.create_table(q[KEY_IN_TABLES])
 
         incremental = False
         primary_key = []
 
-        if isinstance(q.get("output"), dict):
-            incremental = q["output"].get('incremental', False)
-            primary_key = q["output"].get('primary_key', [])
+        if isinstance(q.get(KEY_OUT_TABLES), dict):
+            incremental = q[KEY_OUT_TABLES].get('incremental', False)
+            primary_key = q[KEY_OUT_TABLES].get('primary_key', [])
 
         table_meta = self._connection.execute(f"""DESCRIBE {q["query"]};""").fetchall()
         cols = [c[0] for c in table_meta]
@@ -153,8 +158,8 @@ class Component(ComponentBase):
         tm = TableMetadata()
         tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
 
-        input_data = q.get("input")
-        output_data = q.get("output")
+        input_data = q.get(KEY_IN_TABLES)
+        output_data = q.get(KEY_OUT_TABLES)
         if isinstance(input_data, dict):
             destination = input_data.get('duckdb_destination') or input_data.get("input_pattern")
         else:
