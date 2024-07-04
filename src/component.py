@@ -217,7 +217,7 @@ class Component(ComponentBase):
         if any(char in itc.get("input_pattern") for char in "*?["):
             if not itc.get('duckdb_destination'):
                 raise UserException("Destination must be set if input path contains pattern.")
-            destination_table_name = [itc["duckdb_destination"]]
+            destination_table_name = itc["duckdb_destination"]
             path = itc["input_pattern"]
             table = {}
             has_header = False
