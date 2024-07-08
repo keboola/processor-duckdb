@@ -252,12 +252,16 @@ class Component(ComponentBase):
         detect_dtypes = itc.get('detect_dtypes')
 
         # dynamically name the relation as a table name so it can be accessed later from the query
-        globals()[destination_table_name] = self._connection.read_csv(
-            path_or_buffer=path, delimiter=delimiter, quotechar=quote_char, header=has_header, names=header,
-            skiprows=skip, date_format=date_format, timestamp_format=timestamp_format, filename=add_filename_col,
-            all_varchar=not detect_dtypes)
+        try:
+            globals()[destination_table_name] = self._connection.read_csv(
+                path_or_buffer=path, delimiter=delimiter, quotechar=quote_char, header=has_header, names=header,
+                skiprows=skip, date_format=date_format, timestamp_format=timestamp_format, filename=add_filename_col,
+                all_varchar=not detect_dtypes)
 
-        logging.debug(f"Table {destination_table_name} created.")
+            logging.debug(f"Table {destination_table_name} created.")
+        except duckdb.duckdb.IOException:
+            logging.error(f"No files found that match the pattern {path}")
+            exit(0)
 
     def move_files(self) -> None:
         files = self.get_input_files_definitions()
