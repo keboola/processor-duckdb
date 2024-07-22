@@ -1,0 +1,13 @@
+{
+  "parameters": {
+                "mode": "advanced",
+                "input": ["sliced", "days.csv"],
+                "queries":["CREATE view final AS SELECT * FROM sliced LEFT JOIN days.csv USING (id) ORDER BY id"],
+                "output": ["final"]
+            },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}

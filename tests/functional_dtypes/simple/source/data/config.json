@@ -1,0 +1,15 @@
+{
+  "parameters": {
+                "mode": "simple",
+                "queries":[
+                  {
+                    "input": "second.csv",
+                    "query": "SELECT *, 2 as new_column FROM second.csv"
+                  }]
+            },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}

@@ -1,0 +1,18 @@
+{
+  "parameters": {
+                "mode": "simple",
+                "queries":[
+                  { "input": "sliced",
+                    "query": "SELECT *, 1 as new_column FROM sliced",
+                    "output": {
+                      "primary_key": ["session_id"],
+                      "incremental":  true
+                    }
+                  }]
+            },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}

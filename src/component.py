@@ -8,15 +8,15 @@ from pathlib import Path
 import duckdb
 from duckdb.duckdb import DuckDBPyConnection
 from keboola.component import ComponentBase, UserException
-from keboola.component.dao import TableDefinition, SupportedDataTypes, BaseType, ColumnDefinition
+from keboola.component.dao import TableDefinition, SupportedDataTypes, BaseType, ColumnDefinition, TableMetadata
 import fnmatch
 from typing import Union
+from collections import OrderedDict
 
 KEY_MODE = "mode"
 KEY_IN_TABLES = "input"
 KEY_QUERIES = "queries"
 KEY_OUT_TABLES = "output"
-KEY_DETECT_TYPES = "detect_types"
 DUCK_DB_DIR = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'duckdb')
 
 KEY_DEBUG = 'debug'
@@ -117,23 +117,31 @@ class Component(ComponentBase):
                 incremental = o.get('incremental', False)
                 primary_key = o.get('primary_key', [])
                 destination = o.get('kbc_destination')
+                legacy_manifest = o.get('legacy_manifest', False)
                 o = source
 
             else:
                 incremental = False
                 primary_key = []
                 destination = ''
+                legacy_manifest = False
 
             table_name = o.replace(".csv", "")
 
             table_meta = self._connection.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
-            schema = [ColumnDefinition(name=c[0], data_type=BaseType(type=self.convert_base_types(c[1])))
-                      for c in table_meta]
+            schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
+                                 for c in table_meta)
+
+            tm = TableMetadata()
+            tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
 
             out_table = self.create_out_table_definition(f"{table_name}.csv", schema=schema,
                                                          primary_key=primary_key,
                                                          incremental=incremental,
-                                                         destination=destination)
+                                                         destination=destination,
+                                                         legacy_manifest=legacy_manifest,
+                                                         table_metadata=tm
+                                                         )
 
             try:
                 self._connection.execute(f'''COPY "{table_name}" TO "{out_table.full_path}"
@@ -151,14 +159,19 @@ class Component(ComponentBase):
 
         incremental = False
         primary_key = []
+        legacy_manifest = False
 
         if isinstance(q.get(KEY_OUT_TABLES), dict):
             incremental = q[KEY_OUT_TABLES].get('incremental', False)
             primary_key = q[KEY_OUT_TABLES].get('primary_key', [])
+            legacy_manifest = q[KEY_OUT_TABLES].get('legacy_manifest', False)
 
         table_meta = self._connection.execute(f"""DESCRIBE {q["query"]};""").fetchall()
-        schema = [ColumnDefinition(name=c[0], data_type=BaseType(type=self.convert_base_types(c[1])))
-                  for c in table_meta]
+        schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
+                             for c in table_meta)
+
+        tm = TableMetadata()
+        tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
 
         input_data = q.get(KEY_IN_TABLES)
         output_data = q.get(KEY_OUT_TABLES)
@@ -178,7 +191,9 @@ class Component(ComponentBase):
                                                      schema=schema,
                                                      primary_key=primary_key,
                                                      incremental=incremental,
-                                                     destination=destination)
+                                                     destination=destination,
+                                                     table_metadata=tm
+                                                     )
 
         try:
             self._connection.execute(f'COPY ({q["query"]}) TO "{out_table.full_path}"'
@@ -186,7 +201,7 @@ class Component(ComponentBase):
         except duckdb.duckdb.ConversionException as e:
             raise UserException(f"Error during query execution: {e}")
 
-        self.write_manifest(out_table)
+        self.write_manifest(out_table, legacy_manifest)
 
         logging.debug(f'Table {table_name} export finished.')
 
@@ -217,8 +232,8 @@ class Component(ComponentBase):
 
     def create_table(self, input_table_config: Union[dict, str]) -> None:
         itc = input_table_config
-        detect_dtypes = itc.get('detect_dtypes')
         dtypes = None
+        all_varchar = False
 
         if isinstance(itc, str):
             itc = {'input_pattern': itc}
@@ -231,6 +246,14 @@ class Component(ComponentBase):
             table = {}
             has_header = False
             header = False
+            dtypes_param = itc.get('dtypes_mode')
+
+            matched_tables = [i for i in self._in_tables if fnmatch.fnmatch(i.name, itc["input_pattern"])]
+            if dtypes_param == 'from_manifest':
+                dtypes = {key: value.data_types.get("base").dtype for key, value in matched_tables[0].schema.items()}
+            elif dtypes_param == 'all_varchar':
+                all_varchar = True
+
         else:
             destination_table_name = itc.get('duckdb_destination') or itc["input_pattern"]
 
@@ -245,8 +268,12 @@ class Component(ComponentBase):
             header = itc.get('column_names') or self._get_table_header(table)
             has_header = self._has_header_in_file(table)
 
-            if not detect_dtypes:
-                dtypes = {c.name: c.data_type.get("base").type for c in table.schema}
+            dtypes_param = itc.get('dtypes_mode')
+
+            if dtypes_param == 'from_manifest':
+                dtypes = {key: value.data_types.get("base").dtype for key, value in table.schema.items()}
+            elif dtypes_param == 'all_varchar':
+                all_varchar = True
 
             if table.is_sliced:
                 path = f'{table.full_path}/*.csv'
@@ -267,7 +294,7 @@ class Component(ComponentBase):
             globals()[destination_table_name] = self._connection.read_csv(
                 path_or_buffer=path, delimiter=delimiter, quotechar=quote_char, header=has_header, names=header,
                 skiprows=skip, date_format=date_format, timestamp_format=timestamp_format, filename=add_filename_col,
-                dtype=dtypes)
+                dtype=dtypes, all_varchar=all_varchar)
 
             logging.debug(f"Table {destination_table_name} created.")
         except duckdb.duckdb.IOException:
