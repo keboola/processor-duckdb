@@ -12,7 +12,7 @@ from keboola.component.dao import TableDefinition, SupportedDataTypes, BaseType,
 import fnmatch
 from typing import Union
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 KEY_MODE = "mode"
 KEY_IN_TABLES = "input"
