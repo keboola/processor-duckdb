@@ -12,6 +12,7 @@ from keboola.component.dao import TableDefinition, SupportedDataTypes, BaseType,
 import fnmatch
 from typing import Union
 from collections import OrderedDict
+from dataclasses import dataclass, field
 
 KEY_MODE = "mode"
 KEY_IN_TABLES = "input"
@@ -21,6 +22,27 @@ DUCK_DB_DIR = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'duckdb')
 
 KEY_DEBUG = 'debug'
 MANDATORY_PARS = []
+
+
+@dataclass
+class InTableParams:
+    all_varchar: bool
+    destination_table_name: str
+    dtypes: dict
+    has_header: bool
+    header: list
+    table_config: dict
+    path: str
+    table: TableDefinition
+
+
+@dataclass
+class OutTableParams:
+    table_name: str
+    destination: str
+    incremental: bool
+    primary_key: list
+    legacy_manifest: bool
 
 
 class Component(ComponentBase):
@@ -109,42 +131,26 @@ class Component(ComponentBase):
         for q in queries:
             self._connection.execute(q)
 
-        for o in out_tables:
-            if isinstance(o, dict):
-                source = o.get('duckdb_source')
-                if not source:
-                    raise ValueError("Missing source in out_tables definition")
-                incremental = o.get('incremental', False)
-                primary_key = o.get('primary_key', [])
-                destination = o.get('kbc_destination')
-                legacy_manifest = o.get('legacy_manifest', False)
-                o = source
+        for table in out_tables:
+            table_params = self.get_out_table_params(table)
 
-            else:
-                incremental = False
-                primary_key = []
-                destination = ''
-                legacy_manifest = False
-
-            table_name = o.replace(".csv", "")
-
-            table_meta = self._connection.execute(f"""DESCRIBE TABLE '{o}';""").fetchall()
+            table_meta = self._connection.execute(f"""DESCRIBE TABLE '{table_params.table_name}';""").fetchall()
             schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
                                  for c in table_meta)
 
             tm = TableMetadata()
             tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
 
-            out_table = self.create_out_table_definition(f"{table_name}.csv", schema=schema,
-                                                         primary_key=primary_key,
-                                                         incremental=incremental,
-                                                         destination=destination,
-                                                         legacy_manifest=legacy_manifest,
+            out_table = self.create_out_table_definition(f"{table_params.table_name}.csv", schema=schema,
+                                                         primary_key=table_params.primary_key,
+                                                         incremental=table_params.incremental,
+                                                         destination=table_params.destination,
+                                                         legacy_manifest=table_params.legacy_manifest,
                                                          table_metadata=tm
                                                          )
 
             try:
-                self._connection.execute(f'''COPY "{table_name}" TO "{out_table.full_path}"
+                self._connection.execute(f'''COPY "{table_params.table_name}" TO "{out_table.full_path}"
                                             (HEADER, DELIMITER ',', FORCE_QUOTE *)''')
             except duckdb.duckdb.ConversionException as e:
                 raise UserException(f"Error during query execution: {e}")
@@ -231,44 +237,66 @@ class Component(ComponentBase):
         return has_header
 
     def create_table(self, input_table_config: Union[dict, str]) -> None:
-        itc = input_table_config
+        table_params = self.get_in_table_params(input_table_config)
+
+        delimiter = table_params.table_config.get('delimiter') or table_params.table.delimiter or ','
+        quote_char = table_params.table_config.get('quotechar')
+        has_header = table_params.table_config.get('has_header') or table_params.has_header
+        header = table_params.table_config.get('column_names') or table_params.header or None
+        skip = table_params.table_config.get('skip_lines')
+        date_format = table_params.table_config.get('date_format')
+        timestamp_format = table_params.table_config.get('timestamp_format')
+        add_filename_col = table_params.table_config.get('add_filename_column')
+
+        # dynamically name the relation as a table name so it can be accessed later from the query
+        try:
+            globals()[table_params.destination_table_name] = self._connection.read_csv(
+                path_or_buffer=table_params.path, delimiter=delimiter, quotechar=quote_char, header=has_header,
+                names=header, skiprows=skip, date_format=date_format, timestamp_format=timestamp_format,
+                filename=add_filename_col, dtype=table_params.dtypes, all_varchar=table_params.all_varchar)
+
+            logging.debug(f"Table {table_params.destination_table_name} created.")
+        except duckdb.duckdb.IOException:
+            logging.error(f"No files found that match the pattern {table_params.path}")
+            exit(0)
+
+    def get_in_table_params(self, table_config) -> InTableParams:
+        table = {}
         dtypes = None
         all_varchar = False
 
-        if isinstance(itc, str):
-            itc = {'input_pattern': itc}
+        if isinstance(table_config, str):
+            table_config = {'input_pattern': table_config}
 
-        if any(char in itc.get("input_pattern") for char in "*?["):
-            if not itc.get('duckdb_destination'):
+        if any(char in table_config.get("input_pattern") for char in "*?["):
+            if not table_config.get('duckdb_destination'):
                 raise UserException("Destination must be set if input path contains pattern.")
-            destination_table_name = itc["duckdb_destination"]
-            path = itc["input_pattern"]
-            table = {}
+            destination_table_name = table_config["duckdb_destination"]
+            path = table_config["input_pattern"]
             has_header = False
             header = False
-            dtypes_param = itc.get('dtypes_mode')
+            dtypes_param = table_config.get('dtypes_mode')
 
-            matched_tables = [i for i in self._in_tables if fnmatch.fnmatch(i.name, itc["input_pattern"])]
+            matched_tables = [i for i in self._in_tables if fnmatch.fnmatch(i.name, table_config["input_pattern"])]
             if dtypes_param == 'from_manifest':
                 dtypes = {key: value.data_types.get("base").dtype for key, value in matched_tables[0].schema.items()}
             elif dtypes_param == 'all_varchar':
                 all_varchar = True
 
         else:
-            destination_table_name = itc.get('duckdb_destination') or itc["input_pattern"]
-
-            matched_tables = [i for i in self._in_tables if i.name == itc["input_pattern"]]
+            destination_table_name = table_config.get('duckdb_destination') or table_config["input_pattern"]
+            matched_tables = [i for i in self._in_tables if i.name == table_config["input_pattern"]]
 
             if len(matched_tables) == 0:
-                raise UserException(f"Table {itc['input_pattern']} not found.")
+                raise UserException(f"Table {table_config['input_pattern']} not found.")
             elif len(matched_tables) > 1:
-                raise UserException(f"Multiple input tables with name {itc['input_pattern']} found.")
+                raise UserException(f"Multiple input tables with name {table_config['input_pattern']} found.")
 
             table = matched_tables[0]
-            header = itc.get('column_names') or self._get_table_header(table)
+            header = table_config.get('column_names') or self._get_table_header(table)
             has_header = self._has_header_in_file(table)
 
-            dtypes_param = itc.get('dtypes_mode')
+            dtypes_param = table_config.get('dtypes_mode')
 
             if dtypes_param == 'from_manifest':
                 dtypes = {key: value.data_types.get("base").dtype for key, value in table.schema.items()}
@@ -280,26 +308,27 @@ class Component(ComponentBase):
             else:
                 path = table.full_path
 
-        delimiter = itc.get('delimiter') or table.delimiter or ','
-        quote_char = itc.get('quotechar')
-        has_header = itc.get('has_header') or has_header
-        header = itc.get('column_names') or header or None
-        skip = itc.get('skip_lines')
-        date_format = itc.get('date_format')
-        timestamp_format = itc.get('timestamp_format')
-        add_filename_col = itc.get('add_filename_column')
+        return InTableParams(all_varchar, destination_table_name, dtypes, has_header, header, table_config, path, table)
 
-        # dynamically name the relation as a table name so it can be accessed later from the query
-        try:
-            globals()[destination_table_name] = self._connection.read_csv(
-                path_or_buffer=path, delimiter=delimiter, quotechar=quote_char, header=has_header, names=header,
-                skiprows=skip, date_format=date_format, timestamp_format=timestamp_format, filename=add_filename_col,
-                dtype=dtypes, all_varchar=all_varchar)
+    def get_out_table_params(self, out_table_config: Union[dict, str]) -> OutTableParams:
+        if isinstance(out_table_config, dict):
+            source = out_table_config.get('duckdb_source')
+            if not source:
+                raise ValueError("Missing source in out_tables definition")
+            incremental = out_table_config.get('incremental', False)
+            primary_key = out_table_config.get('primary_key', [])
+            destination = out_table_config.get('kbc_destination')
+            legacy_manifest = out_table_config.get('legacy_manifest', False)
+            table_name = source.replace(".csv", "")
 
-            logging.debug(f"Table {destination_table_name} created.")
-        except duckdb.duckdb.IOException:
-            logging.error(f"No files found that match the pattern {path}")
-            exit(0)
+        else:
+            incremental = False
+            primary_key = []
+            destination = ''
+            legacy_manifest = False
+            table_name = out_table_config.replace(".csv", "")
+
+        return OutTableParams(table_name, destination, incremental, primary_key, legacy_manifest)
 
     def move_files(self) -> None:
         files = self.get_input_files_definitions()
