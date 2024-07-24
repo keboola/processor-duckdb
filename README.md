@@ -30,7 +30,6 @@ In simple mode each query, you can utilize the following parameters:
   - **kbc_destination** - name of the output table
   - **primary_key** - list of primary keys
   - **incremental** - boolean
-  - **legacy_manifest** - boolean - if true, creates the output table with a legacy manifest for compatibility with older processors
 
 #### Example configuration
 
@@ -64,8 +63,7 @@ In simple mode each query, you can utilize the following parameters:
         "output": {
           "kbc_destination": "out-sales",
           "primary_key": ["id"],
-          "incremental": true,
-          "legacy_manifest": true
+          "incremental": true
         }
       },{
         "input": "categories",
@@ -96,8 +94,6 @@ parameters:
   - **kbc_destination** - name of the output table
   - **primary_key** - list of primary keys
   - **incremental** - boolean
-  - **legacy_manifest** - boolean - if true, creates the output table with a legacy manifest for compatibility with older processors
-
 
 
 #### Example configuration
@@ -110,8 +106,7 @@ parameters:
     "queries":["CREATE view final AS SELECT * FROM sliced LEFT JOIN days.csv USING (id) ORDER BY id"],
     "output": [
                 {"duckdb_source": "final",
-                 "kbc_destination": "final.csv",
-                 "legacy_manifest": true
+                 "kbc_destination": "final.csv"
                  }
                ]
 }

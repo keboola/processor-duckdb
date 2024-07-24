@@ -42,7 +42,6 @@ class OutTableParams:
     destination: str
     incremental: bool
     primary_key: list
-    legacy_manifest: bool
 
 
 class Component(ComponentBase):
@@ -145,7 +144,6 @@ class Component(ComponentBase):
                                                          primary_key=table_params.primary_key,
                                                          incremental=table_params.incremental,
                                                          destination=table_params.destination,
-                                                         legacy_manifest=table_params.legacy_manifest,
                                                          table_metadata=tm
                                                          )
 
@@ -165,12 +163,10 @@ class Component(ComponentBase):
 
         incremental = False
         primary_key = []
-        legacy_manifest = False
 
         if isinstance(q.get(KEY_OUT_TABLES), dict):
             incremental = q[KEY_OUT_TABLES].get('incremental', False)
             primary_key = q[KEY_OUT_TABLES].get('primary_key', [])
-            legacy_manifest = q[KEY_OUT_TABLES].get('legacy_manifest', False)
 
         table_meta = self._connection.execute(f"""DESCRIBE {q["query"]};""").fetchall()
         schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
@@ -207,7 +203,7 @@ class Component(ComponentBase):
         except duckdb.duckdb.ConversionException as e:
             raise UserException(f"Error during query execution: {e}")
 
-        self.write_manifest(out_table, legacy_manifest)
+        self.write_manifest(out_table)
 
         logging.debug(f'Table {table_name} export finished.')
 
@@ -318,17 +314,15 @@ class Component(ComponentBase):
             incremental = out_table_config.get('incremental', False)
             primary_key = out_table_config.get('primary_key', [])
             destination = out_table_config.get('kbc_destination')
-            legacy_manifest = out_table_config.get('legacy_manifest', False)
             table_name = source.replace(".csv", "")
 
         else:
             incremental = False
             primary_key = []
             destination = ''
-            legacy_manifest = False
             table_name = out_table_config.replace(".csv", "")
 
-        return OutTableParams(table_name, destination, incremental, primary_key, legacy_manifest)
+        return OutTableParams(table_name, destination, incremental, primary_key)
 
     def move_files(self) -> None:
         files = self.get_input_files_definitions()
