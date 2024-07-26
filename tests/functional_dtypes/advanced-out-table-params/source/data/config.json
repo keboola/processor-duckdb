@@ -1,0 +1,13 @@
+{
+  "parameters": {
+                "mode": "advanced",
+                "input": [{ "input_pattern":"sliced"}],
+                "queries":["CREATE view final AS SELECT * FROM sliced"],
+                "output": [{"duckdb_source":"final", "kbc_destination":"out.bucket1.final.csv", "primary_key": ["id"], "incremental":  true}]
+            },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}

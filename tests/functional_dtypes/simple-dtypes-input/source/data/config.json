@@ -1,0 +1,32 @@
+{
+  "parameters": {
+                "mode": "simple",
+                "queries":[
+                  {
+                    "input": {
+                      "input_pattern": "table.csv",
+                      "duckdb_destination": "in_second",
+                      "primary_key": [
+                        "INTEGER"
+                      ],
+                      "delimiter": ",",
+                      "quotechar": "\"",
+                      "incremental": true,
+                      "detect_dtypes": true,
+                      "has_header": true,
+                      "skip_lines": 0
+                    },
+                    "query": "SELECT *, 2 as new_column FROM in_second",
+                    "output": {
+                      "kbc_destination": "out_second.csv",
+                      "primary_key": ["INTEGER"],
+                      "incremental":  true
+                    }
+                  }]
+            },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}

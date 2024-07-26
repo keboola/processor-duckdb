@@ -1,0 +1,24 @@
+{
+  "parameters": {
+    "mode": "simple",
+    "queries": [
+      {
+        "input": {
+          "input_pattern": "second.csv",
+          "dtypes_mode": "all_varchar"
+        },
+        "query": "SELECT *, 2 as new_column FROM second.csv",
+        "output": {
+          "kbc_destination": "second.csv",
+          "primary_key": ["Timestamp"],
+          "incremental": true
+        }
+      }
+    ]
+  },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}
