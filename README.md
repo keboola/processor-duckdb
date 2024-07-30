@@ -1,35 +1,38 @@
-# DuckDB processor
+# DuckDB Processor
 
-DuckDB processor is a component that allows running SQL queries on DuckDB database. For more information about DuckDB, please visit the [DuckDB Docs website](https://duckdb.org/docs/).
+The DuckDB processor is a component that allows running SQL queries on the DuckDB database. For more information about DuckDB, please visit the [DuckDB Docs website](https://duckdb.org/docs/).
 
 ## Configuration
 
-Component supports two modes of operation, simple and advanced.
-- **mode** - "simple" (default) / "advanced"
+The component supports two **modes of operation**:
+- Simple (default)
+- Advanced
 
+### Simple Mode
+In simple mode, each query operates on a single table in DuckDB that can be created from a table defined by name, or from multiple tables matching a pattern (along with an arbitrary number of files). 
+The query output is exported using the name of the input table.
 
-### Simple mode
-In simple mode, each query operates on a single table in DuckDB which can be created from table defined by name, or by multiple tables matching pattern (along with an arbitrary number of files), and the query output is exported using the name of the input table.
+In simple mode, the parameter **queries** is an array of queries to be executed. Each query has own input, query, and output, and is isolated.
+Each query can use the following parameters:
 
-In the simple mode, the parameter **queries** is an array of queries to be executed. Each query has own input, query and output and is isolated.
-Each query contains the following parameters:
-
-In simple mode each query, you can utilize the following parameters:
-- **input** - string of name or pattern, or object containing following parameters:
-  - **input_pattern** - (required) name of table or [glob pattern](https://duckdb.org/docs/data/multiple_files/overview#glob-syntax)
-  - **duckdb_destination** - name of the table in DuckDB
-  - **dtypes_mode** - all_varchar (default) / auto_detect / from_manifest - all_varchar: treats all columns as text, auto_detect: automatically infers data types, from_manifest: uses data types from the input manifest (if used wildcard, the manifest of first table is used)
-  - **skip_lines** - number of lines to skip
-  - **delimiter** - string of delimiter
-  - **quotechar** - string of quotechar
-  - **column_names** - list of column names
-  - **date_format** - string of date format
-  - **timestamp_format** - string of timestamp format
-- **query** (required) query to be executed
-- **output** - string of output table name or object containing following parameters:
-  - **kbc_destination** - name of the output table
-  - **primary_key** - list of primary keys
-  - **incremental** - boolean
+- **input:** A string specifying the name or pattern, or an object containing the following parameters:
+  - **input_pattern** (required): The name of the table or [glob pattern](https://duckdb.org/docs/data/multiple_files/overview#glob-syntax)
+  - **duckdb_destination:** The name of the table in DuckDB
+  - **dtypes_mode:** all_varchar (default) / auto_detect / from_manifest
+    - all_varchar: Treats all columns as text
+    - auto_detect: Automatically infers data types
+    - from_manifest: Uses data types from the input manifest (if a wildcard is used, the manifest of the first table is used)
+  - **skip_lines:** The number of lines to skip
+  - **delimiter:** A string specifying the delimiter
+  - **quotechar:** A string specifying the quote character
+  - **column_names:** A list of column names
+  - **date_format:** A string specifying the date format
+  - **timestamp_format:** A string specifying the timestamp format
+- **query** (required): The query to be executed
+- **output:** A string specifying the output table name or an object containing the following parameters:
+  - **kbc_destination:** The name of the output table
+  - **primary_key:** A list of primary keys
+  - **incremental:** A boolean value indicating whether the data should be loaded incrementally
 
 #### Example configuration
 
@@ -73,28 +76,29 @@ In simple mode each query, you can utilize the following parameters:
 ```
 
 
-### Advanced mode
-In advanced mode, first the [relations](https://duckdb.org/docs/api/python/relational_api) from all specified input tables are created.
-Then all defined queries are processed.
-Finally, output tables specified in out_tables are exported to KBC storage.
+### Advanced Mode
+In advanced mode, the [relations](https://duckdb.org/docs/api/python/relational_api) from all specified input tables are created first.
+Then, all defined queries are processed. Finally, output tables specified in out_tables are exported to Keboola Storage.
 
-parameters:
- - **input** - array of all input tables from KBC, can be defined either as string containing name / pattern, or object containing following parameters:
-    - **input_pattern** - (required) name of table or [glob pattern](https://duckdb.org/docs/data/multiple_files/overview#glob-syntax)
-    - **duckdb_destination** - name of the table in DuckDB
-    - **dtypes_mode** - all_varchar (default) / auto_detect / from_manifest - all_varchar: treats all columns as text, auto_detect: automatically infers data types, from_manifest: uses data types from the input manifest (if used wildcard, the manifest of first table is used)
-    - **skip_lines** - number of lines to skip
-    - **delimiter** - string of delimiter
-    - **quotechar** - string of quotechar
-    - **column_names** - list of column names
-    - **date_format** - string of date format
-    - **timestamp_format** - string of timestamp format
-- **queries** - A list of SQL queries to be executed.
-- **output** - array of all output tables, can be defined as string of output table name or as a object containing following parameters:
-  - **kbc_destination** - name of the output table
-  - **primary_key** - list of primary keys
-  - **incremental** - boolean
-
+Parameters:
+ - **input:** An array of all input tables from Keboola, defined either as a string containing the name/pattern, or as an object containing the following parameters:
+    - **input_pattern** (required): The name of the table or [glob pattern](https://duckdb.org/docs/data/multiple_files/overview#glob-syntax)
+    - **duckdb_destination:** The name of the table in DuckDB
+    - **dtypes_mode:** all_varchar (default) / auto_detect / from_manifest 
+      - all_varchar: Treats all columns as text
+      - auto_detect: Automatically infers data types
+      - from_manifest: Uses data types from the input manifest (if a wildcard is used, the manifest of the first table is used)
+    - **skip_lines:** The number of lines to skip
+    - **delimiter:** A string specifying the delimiter
+    - **quotechar:** A string specifying the quote character
+    - **column_names:** A list of column names
+    - **date_format:** A string specifying the date format
+    - **timestamp_format:** A string specifying the timestamp format
+- **queries:** A list of SQL queries to be executed
+- **output:** An array of all output tables, defined as a string specifying the output table name or as an object containing the following parameters:
+  - **kbc_destination:** The name of the output table
+  - **primary_key:** A list of primary keys
+  - **incremental:** A boolean value indicating whether the data should be loaded incrementally
 
 #### Example configuration
 
@@ -122,7 +126,7 @@ parameters:
 }
 ```
 
-Load file from url and save it as table
+Load file from the URL and save it as a table
 ```
 {
     "mode": "advanced",
@@ -132,13 +136,12 @@ Load file from url and save it as table
 ```
 
 
-
 # Development
 
-This example contains runnable container with simple unittest. For local testing it is useful to include `data` folder
+This example contains a runnable container with simple unittests. For local testing, it is useful to include the `data` folder
 in the root and use docker-compose commands to run the container or execute tests.
 
-If required, change local data folder (the `CUSTOM_FOLDER` placeholder) path to your custom path:
+If required, change the local data folder (the `CUSTOM_FOLDER` placeholder) path to your custom path:
 
 ```yaml
     volumes:
@@ -146,7 +149,7 @@ If required, change local data folder (the `CUSTOM_FOLDER` placeholder) path to 
       - ./CUSTOM_FOLDER:/data
 ```
 
-Clone this repository, init the workspace and run the component with following command:
+Clone this repository, initialize the workspace, and run the component with the following commands:
 
 ```
 git clone https://bitbucket.org:kds_consulting_team/kds-team.processor-rename-headers.git my-new-component
@@ -163,10 +166,10 @@ docker-compose run --rm test
 
 # Testing
 
-The preset pipeline scripts contain sections allowing pushing testing image into the ECR repository and automatic
+The preset pipeline scripts contain sections allowing pushing a testing image into the ECR repository and automatic
 testing in a dedicated project. These sections are by default commented out.
 
 # Integration
 
-For information about deployment and integration with KBC, please refer to
-the [deployment section of developers documentation](https://developers.keboola.com/extend/component/deployment/) 
+For information about deployment and integration with Keboola, please refer to
+the [deployment section of developers' documentation](https://developers.keboola.com/extend/component/deployment/). 
