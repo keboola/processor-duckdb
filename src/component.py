@@ -106,9 +106,9 @@ class Component(ComponentBase):
         Output is stored in the output table with the same name.
         All other tables and all files are moved to the output.
         """
-        in_tables = self._config.get(KEY_IN_TABLES)
-        queries = self._config.get(KEY_QUERIES)
-        out_tables = self._config.get(KEY_OUT_TABLES)
+        in_tables = self._config.get(KEY_IN_TABLES, [])
+        queries = self._config.get(KEY_QUERIES, [])
+        out_tables = self._config.get(KEY_OUT_TABLES, [])
 
         matched_tables = []
         for t in in_tables:
