@@ -12,6 +12,8 @@ The component supports two **modes of operation**:
 In simple mode, each query operates on a single table in DuckDB that can be created from a table defined by name, or from multiple tables matching a pattern (along with an arbitrary number of files). 
 The query output is exported using the name of the input table.
 
+![simple.png](docs/imgs/simple.png)
+
 In simple mode, the parameter **queries** is an array of queries to be executed. Each query has own input, query, and output, and is isolated.
 Each query can use the following parameters:
 
@@ -100,6 +102,8 @@ Each query can use the following parameters:
 ### Advanced Mode
 In advanced mode, the [relations](https://duckdb.org/docs/api/python/relational_api) from all specified input tables are created first.
 Then, all defined queries are processed. Finally, output tables specified in out_tables are exported to Keboola Storage.
+
+![advanced.png](docs/imgs/advanced.png)
 
 Parameters:
  - **input:** An array of all input tables from Keboola, defined either as a string containing the name, or as an object containing the following parameters:
@@ -220,6 +224,99 @@ Other common usecase when we don't need to define input tables, is when we have 
     ]
 }
 ```
+
+More examples of configurations for both modes can be found in the [tests directory](../tests/). (always inside source/data/config.json).
+
+# Local debugging
+
+If you need to debug the component—whether for testing SQL queries or optimizing performance—you can run it locally. Here’s how:
+
+## 1. Clone the Repo
+First, clone the repository:
+
+```
+git clone https://github.com/keboola/processor-duckdb
+```
+
+## 2. Open in VS Code & Add Dependencies
+- Open the project in VS Code.
+- Add `pandas` to `requirements.txt`. This is needed to display tabular data in the **DataWrangler** plugin.
+- Press CMD + Shift + R / Ctrl + Shift + R and enter "Create Environment", choose option to install the dependencies.
+
+
+## 3. Copy a Data Folder
+- You can either download real data from Keboola debug job from the step preceeding the DuckDB processor.
+- Or you can use data folder from examples  `tests/functional/ANY/source` and copy it to the root of the component directory.
+- Inside the data/ folder, you can customize based on your needs:
+  - `in/tables/` with csv tables
+  - `in/files/` with files
+  - `config.json` containing the configuration
+
+## 4. Set `data_path_override`
+- Get the absolute path of your copied data folder.
+- Add it to `data_path_override` on **line 50** of `src/component.py`:
+
+```
+ComponentBase.__init__(self, data_path_override="abs/path/component/data")
+```
+
+## 5. Add Breakpoints
+- Set a breakpoint at:
+  - **Line 87** for simple mode
+  - **Line 131** for advanced mode
+
+## 6. Run Debugging Queries
+- In the **debug console**, you can run:
+
+  ```
+  self._connection.execute("SELECT * FROM table").fetchall()
+  ```
+
+- Want to see results in **DataWrangler**? Store them as a numpy array first:
+
+  ```
+  out = self._connection.execute("SELECT * FROM table").fetchnumpy()
+  ```
+
+- Then, right-click on the variable and select **Display in Data Wrangler**.  
+  (Heads up: this doesn’t always work reliably. If it’s acting up, try **PyCharm** instead.)
+
+---
+
+## Useful Debugging Commands
+
+### Mimic Keboola's Limits
+```
+SET memory_limit = '2GB';
+SET threads = 4;
+SET max_temp_directory_size = '20GB';
+```
+
+### Check the Query Execution Plan
+```
+EXPLAIN;
+```
+
+### Profile a Query
+```
+EXPLAIN ANALYZE;
+```
+
+### See Temp File Storage Usage
+```
+SELECT path, round(size/10**6)::INT AS "size_MB" FROM duckdb_temporary_files();
+```
+
+### Check Memory Usage
+```
+SELECT tag, 
+       round(memory_usage_bytes/10**6)::INT AS "mem_MB", 
+       round(temporary_storage_bytes/10**6)::INT AS "storage_MB" 
+FROM duckdb_memory();
+```
+
+
+
 
 
 # Development
