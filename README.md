@@ -227,7 +227,7 @@ Other common usecase when we don't need to define input tables, is when we have 
 
 More examples of configurations for both modes can be found in the [tests directory](../tests/). (always inside source/data/config.json).
 
-# Local debugging
+# Local Debugging
 
 If you need to debug the component—whether for testing SQL queries or optimizing performance—you can run it locally. Here’s how:
 
@@ -240,20 +240,20 @@ git clone https://github.com/keboola/processor-duckdb
 
 ## 2. Open in VS Code & Add Dependencies
 - Open the project in VS Code.
-- Add `pandas` to `requirements.txt`. This is needed to display tabular data in the **DataWrangler** plugin.
-- Press CMD + Shift + R / Ctrl + Shift + R and enter "Create Environment", choose option to install the dependencies.
+- Add `pandas` to `requirements.txt`. This is required to display tabular data in the **Data Wrangler** plugin.
+- Press **CMD + Shift + R / Ctrl + Shift + R**, type "Create Environment", and select the option to install the dependencies.
 
 
 ## 3. Copy a Data Folder
-- You can either download real data from Keboola debug job from the step preceeding the DuckDB processor.
-- Or you can use data folder from examples  `tests/functional/ANY/source` and copy it to the root of the component directory.
-- Inside the data/ folder, you can customize based on your needs:
-  - `in/tables/` with csv tables
-  - `in/files/` with files
-  - `config.json` containing the configuration
+- You can either download real data from a Keboola debug job from the step preceeding the DuckDB processor.
+- Or, you can use a data folder from the examples under `tests/functional/ANY/source` and copy it to the root of the component directory.
+- Inside the data folder, customize the content as needed:
+  - `in/tables/` — contains CSV tables.
+  - `in/files/` — contains files.
+  - `config.json` — contains the configuration.
 
 ## 4. Set `data_path_override`
-- Get the absolute path of your copied data folder.
+- Get the absolute path to your copied data folder.
 - Add it to `data_path_override` on **line 50** of `src/component.py`:
 
 ```
@@ -261,9 +261,9 @@ ComponentBase.__init__(self, data_path_override="abs/path/component/data")
 ```
 
 ## 5. Add Breakpoints
-- Set a breakpoint at:
-  - **Line 87** for simple mode
-  - **Line 131** for advanced mode
+- Set breakpoints at:
+  - **Line 87** for simple mode.
+  - **Line 131** for advanced mode.
 
 ## 6. Run Debugging Queries
 - In the **debug console**, you can run:
@@ -272,14 +272,14 @@ ComponentBase.__init__(self, data_path_override="abs/path/component/data")
   self._connection.execute("SELECT * FROM table").fetchall()
   ```
 
-- Want to see results in **DataWrangler**? Store them as a numpy array first:
+- Want to see results in **Data Wrangler**? Store them as a numpy array first:
 
   ```
   out = self._connection.execute("SELECT * FROM table").fetchnumpy()
   ```
 
 - Then, right-click on the variable and select **Display in Data Wrangler**.  
-  (Heads up: this doesn’t always work reliably. If it’s acting up, try **PyCharm** instead.)
+  **Note:** This doesn’t always work reliably. If it’s acting up, consider using **PyCharm** instead.
 
 ---
 
