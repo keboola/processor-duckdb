@@ -1,1 +1,1 @@
-The DuckDB processor allows custom transformation using SQL.
+The DuckDB processor allows custom transformations using SQL.
