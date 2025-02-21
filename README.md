@@ -364,4 +364,4 @@ testing in a dedicated project. These sections are by default commented out.
 # Integration
 
 For information about deployment and integration with Keboola, please refer to
-the [deployment section of developers' documentation](https://developers.keboola.com/extend/component/deployment/). 
+the [deployment section of the developer documentation](https://developers.keboola.com/extend/component/deployment/). 
