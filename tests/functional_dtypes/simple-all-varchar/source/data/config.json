@@ -7,7 +7,7 @@
           "input_pattern": "second.csv",
           "dtypes_mode": "all_varchar"
         },
-        "query": "SELECT *, 2 as new_column FROM second.csv",
+        "query": "SELECT *, 2 as new_column FROM 'second.csv'",
         "output": {
           "kbc_destination": "second.csv",
           "primary_key": ["Timestamp"],

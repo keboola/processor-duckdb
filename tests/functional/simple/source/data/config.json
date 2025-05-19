@@ -4,7 +4,7 @@
                 "queries":[
                   {
                     "input": "second.csv",
-                    "query": "SELECT *, 2 as new_column FROM second.csv"
+                    "query": "SELECT *, 2 as new_column FROM 'second.csv'"
                   }]
             },
   "image_parameters": {},
