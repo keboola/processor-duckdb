@@ -2,7 +2,7 @@
   "parameters": {
                 "mode": "advanced",
                 "input": ["sliced", "days.csv"],
-                "queries":["CREATE view final AS SELECT * FROM sliced LEFT JOIN days.csv USING (id) ORDER BY id"],
+                "queries":["CREATE view final AS SELECT * FROM sliced LEFT JOIN 'days.csv' USING (id) ORDER BY id"],
                 "output": [{
                   "duckdb_source": "final",
           "kbc_destination": "final.csv",

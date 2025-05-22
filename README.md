@@ -52,7 +52,7 @@ Each query can use the following parameters:
                 "queries": [
                     {
                         "input": "sales.csv",
-                        "query": "SELECT sales_representative, SUM(turnover) AS total_turnover FROM sales.csv GROUP BY sales_representative"
+                        "query": "SELECT sales_representative, SUM(turnover) AS total_turnover FROM 'sales.csv' GROUP BY sales_representative"
                     }
                 ]
             }
@@ -147,8 +147,8 @@ This configuration loads two input tables, performs queries (including exporting
                     "sales2.csv"
                 ],
                 "queries": [
-                    "CREATE view sales_all AS SELECT * FROM sales1.csv UNION ALL SELECT * FROM sales2.csv",
-                    "CREATE view sales_first AS SELECT * FROM sales1.csv LIMIT 1",
+                    "CREATE view sales_all AS SELECT * FROM 'sales1.csv' UNION ALL SELECT * FROM 'sales2.csv'",
+                    "CREATE view sales_first AS SELECT * FROM 'sales1.csv' LIMIT 1",
                     "COPY sales_all TO '/data/out/files/sales_all.parquet' (FORMAT PARQUET)"
                 ],
                 "output": [
