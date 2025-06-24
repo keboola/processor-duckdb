@@ -114,6 +114,11 @@ class Component(ComponentBase):
             logging.error(f"Failed to connect to MotherDuck: {e}")
             raise UserException(f"Failed to connect to MotherDuck: {e}")
 
+        # Print the number of input tables and their details for debugging
+        print(f"Number of input tables: {len(self._in_tables)}")
+        for t in self._in_tables:
+            print(f"Table name: {t.name}, path: {t.full_path}")
+
         # For each input table, upload the CSV to MotherDuck as a table
         for table in self._in_tables:
             table_name = table.name
