@@ -53,14 +53,87 @@ class Component(ComponentBase):
         self._connection = self.init_connection()
         self._in_tables = self.get_input_tables_definitions()
 
+    def set_motherduck_token_from_md_connection(self, md_con):
+        """
+        Fetches the MotherDuck token using PRAGMA PRINT_MD_TOKEN from the given MotherDuck connection
+        and sets it as the 'motherduck_token' environment variable for future use.
+        """
+        try:
+            result = md_con.execute("PRAGMA PRINT_MD_TOKEN;").fetchone()
+            if result and result[0]:
+                os.environ['motherduck_token'] = result[0]
+                logging.info("MotherDuck token set from MotherDuck connection.")
+            else:
+                logging.warning("No MotherDuck token found in MotherDuck connection.")
+        except Exception as e:
+            logging.error(f"Failed to fetch MotherDuck token from MotherDuck connection: {e}")
+            # Do not raise, just log; user may want to handle token manually
+
+    def ensure_motherduck_token(self, database_name):
+        """
+        Ensures the motherduck_token is set in the environment.
+        If not, connects to MotherDuck, fetches the token using PRAGMA PRINT_MD_TOKEN, sets it, and closes the connection.
+        """
+        if os.environ.get('motherduck_token'):
+            logging.info("MotherDuck token already set in environment.")
+            return
+        try:
+            # Connect to MotherDuck (may prompt for login)
+            temp_con = duckdb.connect(f"md:{database_name}")
+            result = temp_con.execute("PRAGMA PRINT_MD_TOKEN;").fetchone()
+            if result and result[0]:
+                os.environ['motherduck_token'] = result[0]
+                logging.info("MotherDuck token retrieved and set from MotherDuck connection.")
+            else:
+                logging.warning("No MotherDuck token found in MotherDuck connection.")
+            temp_con.close()
+        except Exception as e:
+            logging.error(f"Failed to fetch MotherDuck token: {e}")
+            # Do not raise, just log; user may want to handle token manually
+
     def run(self):
-        print("hello!!!!!")
-        if self._config.get(KEY_MODE) == 'advanced':
-            self.advanced_mode()
-            print("advanced mode")
-        else:
-            self.simple_mode()
-            print("simple mode")
+        """
+        Loads all input tables (CSVs) into MotherDuck using the database name from config.json.
+        Ensures the MotherDuck token is set, then connects and uploads tables.
+        """
+        # Retrieve the token from the environment
+        token = os.environ.get('motherduck_token')
+        print(f"token: {token}")
+        if not token:
+            raise UserException("MotherDuck token could not be retrieved from environment.")
+
+        # Get the MotherDuck database name from config
+        database_name = self._config.get("database")
+        if not database_name:
+            raise UserException("Missing 'database' parameter in configuration.")
+
+        # Connect to MotherDuck using the token explicitly in the config
+        try:
+            md_con = duckdb.connect(f"md:{database_name}", config={"motherduck_token": token})
+        except Exception as e:
+            logging.error(f"Failed to connect to MotherDuck: {e}")
+            raise UserException(f"Failed to connect to MotherDuck: {e}")
+
+        # For each input table, upload the CSV to MotherDuck as a table
+        for table in self._in_tables:
+            table_name = table.name
+            csv_path = table.full_path
+            # Add a comment explaining the operation
+            logging.info(f"Uploading table '{table_name}' from '{csv_path}' to MotherDuck database '{database_name}'...")
+            try:
+                # This will create the table in MotherDuck and load the CSV data
+                md_con.sql(f"CREATE TABLE {table_name} AS SELECT * FROM '{csv_path}'")
+                logging.info(f"Table '{table_name}' uploaded successfully.")
+            except Exception as e:
+                logging.error(f"Failed to upload table '{table_name}': {e}")
+                raise UserException(f"Failed to upload table '{table_name}' to MotherDuck: {e}")
+
+        # Close the MotherDuck connection
+        md_con.close()
+        logging.info("All tables uploaded to MotherDuck successfully.")
+
+        # Optionally, you can print a message for the user
+        print(f"All input tables have been uploaded to MotherDuck database '{database_name}'.")
 
     def init_connection(self) -> DuckDBPyConnection:
         """
