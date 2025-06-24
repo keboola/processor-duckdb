@@ -104,20 +104,24 @@ class Component(ComponentBase):
             table_name = Path(table.name).stem  # Remove .csv extension for MotherDuck
             print(f"Processing and uploading: {table.name} (local table: {table_name})")
             try:
+                # Read manifest information to determine load strategy
+                print(f"CALLING get_manifest_info for {table.name}")
+                manifest_info = self.get_manifest_info(table)
+                print(f"MANIFEST INFO RESULT: {manifest_info}")
+                
+                # Create local table using existing logic
                 self.create_table(table.name)
+                
+                # Determine CSV path (handle sliced tables)
                 if os.path.isdir(table.full_path):
                     print(f"Table is sliced: {table.full_path}")
                     csv_path = os.path.join(table.full_path, '*.csv')
                 else:
                     csv_path = table.full_path
 
-                # Always drop and reload the table in MotherDuck
-                if self.table_exists_in_motherduck(md_con, table_name):
-                    print(f"Dropping existing table {table_name} in MotherDuck...")
-                    md_con.sql(f"DROP TABLE IF EXISTS {table_name}")
-                print(f"Loading table {table_name} into MotherDuck (full load)...")
-                md_con.sql(f"CREATE TABLE {table_name} AS SELECT * FROM '{csv_path}'")
-                logging.info(f"Table '{table_name}' uploaded to MotherDuck successfully (full load).")
+                # Load table to MotherDuck based on manifest settings
+                self.load_table_to_motherduck(md_con, table_name, csv_path, manifest_info)
+                
             except Exception as e:
                 logging.error(f"Failed to process or upload table '{table_name}': {e}")
                 raise UserException(f"Failed to process or upload table '{table_name}' to MotherDuck: {e}")
@@ -444,6 +448,144 @@ class Component(ComponentBase):
             shutil.copytree(t.full_path, Path(self.tables_out_path).joinpath(t.name))
         else:
             shutil.copy(t.full_path, Path(self.tables_out_path).joinpath(t.name))
+
+    def get_manifest_info(self, table):
+        """
+        Read manifest file for a table and extract incremental flag and columns.
+        
+        Args:
+            table: TableDefinition object
+            
+        Returns:
+            dict: Dictionary with 'incremental' (bool), 'columns' (list), 'has_id_column' (bool)
+        """
+        print(f"HEEEEERE!: Getting manifest info for table: {table.name}")
+        try:
+            # For sliced tables (directories), the manifest is at the directory level
+            # For regular files, the manifest is at the file level
+            manifest_path = f"{table.full_path}.manifest"
+            
+            print(f"DEBUG: Looking for manifest at: {manifest_path}")  # Debug logging
+            print(f"DEBUG: Table full_path: {table.full_path}")  # Debug logging
+            print(f"DEBUG: Manifest exists: {os.path.exists(manifest_path)}")  # Debug logging
+            
+            if os.path.exists(manifest_path):
+                with open(manifest_path, 'r') as f:
+                    manifest_data = json.load(f)
+                
+                incremental = manifest_data.get('incremental', False)
+                columns = manifest_data.get('columns', [])
+                has_id_column = 'id' in columns
+                
+                print(f"DEBUG: Manifest data for {table.name}: incremental={incremental}, columns={columns}, has_id={has_id_column}")
+                logging.debug(f"Manifest for {table.name}: incremental={incremental}, columns={columns}, has_id={has_id_column}")
+                return {
+                    'incremental': incremental,
+                    'columns': columns,
+                    'has_id_column': has_id_column
+                }
+            else:
+                print(f"DEBUG: No manifest file found for {table.name} at {manifest_path}, defaulting to full load")
+                logging.warning(f"No manifest file found for {table.name}, defaulting to full load")
+                return {
+                    'incremental': False,
+                    'columns': [],
+                    'has_id_column': False
+                }
+        except Exception as e:
+            print(f"DEBUG: Error reading manifest for {table.name}: {e}")
+            logging.error(f"Error reading manifest for {table.name}: {e}")
+            return {
+                'incremental': False,
+                'columns': [],
+                'has_id_column': False
+            }
+
+    def load_table_to_motherduck(self, md_con, table_name, csv_path, manifest_info):
+        """
+        Load table to MotherDuck based on incremental settings from manifest.
+        
+        Args:
+            md_con: MotherDuck connection
+            table_name: Name of the target table in MotherDuck
+            csv_path: Path to CSV file(s) to load
+            manifest_info: Dictionary with manifest information
+        """
+        print(f"LOAD_TABLE_TO_MOTHERDUCK: table={table_name}, manifest_info={manifest_info}")
+        table_exists = self.table_exists_in_motherduck(md_con, table_name)
+        
+        if not manifest_info['incremental']:
+            # Full load: drop and recreate table
+            if table_exists:
+                print(f"Dropping existing table {table_name} in MotherDuck (full load)...")
+                md_con.sql(f"DROP TABLE IF EXISTS {table_name}")
+            print(f"Loading table {table_name} into MotherDuck (full load)...")
+            
+            # Handle sliced tables (CSV files without headers)
+            if '*.csv' in csv_path and manifest_info['columns']:
+                columns = manifest_info['columns']
+                column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
+                md_con.sql(f"CREATE TABLE {table_name} AS SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
+            else:
+                md_con.sql(f"CREATE TABLE {table_name} AS SELECT * FROM '{csv_path}'")
+            logging.info(f"Table '{table_name}' uploaded to MotherDuck successfully (full load).")
+            
+        else:
+            # Incremental load
+            if not table_exists:
+                # First time load - create table
+                print(f"Creating new table {table_name} in MotherDuck (incremental - first load)...")
+                
+                # Handle sliced tables (CSV files without headers)
+                if '*.csv' in csv_path and manifest_info['columns']:
+                    columns = manifest_info['columns']
+                    column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
+                    md_con.sql(f"CREATE TABLE {table_name} AS SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
+                else:
+                    md_con.sql(f"CREATE TABLE {table_name} AS SELECT * FROM '{csv_path}'")
+                logging.info(f"Table '{table_name}' created in MotherDuck (incremental - first load).")
+            else:
+                # Incremental append
+                if manifest_info['has_id_column']:
+                    # Use 'id' column for deduplication
+                    print(f"Loading table {table_name} into MotherDuck (incremental with deduplication on 'id')...")
+                    
+                    # Create temporary table with new data
+                    temp_table = f"{table_name}_temp"
+                    md_con.sql(f"DROP TABLE IF EXISTS {temp_table}")
+                    
+                    # For sliced tables, we need to specify column names since CSV files don't have headers
+                    if '*.csv' in csv_path and manifest_info['columns']:
+                        # Build column list for CREATE TABLE with proper names
+                        columns = manifest_info['columns']
+                        column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
+                        md_con.sql(f"CREATE TABLE {temp_table} AS SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
+                    else:
+                        md_con.sql(f"CREATE TABLE {temp_table} AS SELECT * FROM '{csv_path}'")
+                    
+                    # Insert only new records (not existing in target table based on 'id')
+                    md_con.sql(f"""
+                        INSERT INTO {table_name}
+                        SELECT * FROM {temp_table}
+                        WHERE id NOT IN (SELECT id FROM {table_name})
+                    """)
+                    
+                    # Clean up temporary table
+                    md_con.sql(f"DROP TABLE {temp_table}")
+                    
+                    logging.info(f"Table '{table_name}' updated in MotherDuck (incremental with deduplication).")
+                else:
+                    # Simple append without deduplication
+                    print(f"Loading table {table_name} into MotherDuck (incremental append - no deduplication)...")
+                    
+                    # Handle sliced tables (CSV files without headers)
+                    if '*.csv' in csv_path and manifest_info['columns']:
+                        columns = manifest_info['columns']
+                        column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
+                        md_con.sql(f"INSERT INTO {table_name} SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
+                    else:
+                        md_con.sql(f"INSERT INTO {table_name} SELECT * FROM '{csv_path}'")
+                    logging.info(f"Table '{table_name}' updated in MotherDuck (incremental append).")
 
     def table_exists_in_motherduck(self, md_con, table_name):
         """
