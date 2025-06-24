@@ -123,16 +123,20 @@ class Component(ComponentBase):
             table_name = Path(table.name).stem  # Remove .csv extension for MotherDuck
             print(f"Processing and uploading: {table.name} (local table: {table_name})")
             try:
-                # Use create_table to load the table into local DuckDB (handles slices, patterns, etc.)
                 self.create_table(table.name)
-                # If the table is sliced, use the glob pattern for all CSVs in the directory
                 if os.path.isdir(table.full_path):
                     print(f"Table is sliced: {table.full_path}")
                     csv_path = os.path.join(table.full_path, '*.csv')
                 else:
                     csv_path = table.full_path
+
+                # Always drop and reload the table in MotherDuck
+                if self.table_exists_in_motherduck(md_con, table_name):
+                    print(f"Dropping existing table {table_name} in MotherDuck...")
+                    md_con.sql(f"DROP TABLE IF EXISTS {table_name}")
+                print(f"Loading table {table_name} into MotherDuck (full load)...")
                 md_con.sql(f"CREATE TABLE {table_name} AS SELECT * FROM '{csv_path}'")
-                logging.info(f"Table '{table_name}' uploaded to MotherDuck successfully.")
+                logging.info(f"Table '{table_name}' uploaded to MotherDuck successfully (full load).")
             except Exception as e:
                 logging.error(f"Failed to process or upload table '{table_name}': {e}")
                 raise UserException(f"Failed to process or upload table '{table_name}' to MotherDuck: {e}")
@@ -461,6 +465,41 @@ class Component(ComponentBase):
             shutil.copytree(t.full_path, Path(self.tables_out_path).joinpath(t.name))
         else:
             shutil.copy(t.full_path, Path(self.tables_out_path).joinpath(t.name))
+
+    def table_exists_in_motherduck(self, md_con, table_name):
+        """
+        Check if a table exists in the MotherDuck database.
+        Uses the information_schema.tables system view to check for table existence.
+        
+        Args:
+            md_con: MotherDuck connection object
+            table_name: Name of the table to check
+            
+        Returns:
+            bool: True if table exists, False otherwise
+        """
+        try:
+            # Query the information schema to check if the table exists
+            # We check both the table_name and table_schema (defaulting to 'main')
+            schema_name = self._config.get("schema", "main")
+            
+            result = md_con.execute("""
+                SELECT COUNT(*) as table_count 
+                FROM information_schema.tables 
+                WHERE table_name = ? AND table_schema = ?
+            """, [table_name, schema_name]).fetchone()
+            
+            # If count > 0, table exists
+            table_exists = result[0] > 0 if result else False
+            
+            logging.debug(f"Table '{table_name}' existence check in schema '{schema_name}': {table_exists}")
+            return table_exists
+            
+        except Exception as e:
+            # If there's an error checking table existence, log it and assume table doesn't exist
+            # This is safer than assuming it exists and potentially causing data loss
+            logging.warning(f"Error checking if table '{table_name}' exists in MotherDuck: {e}")
+            return False
 
 
 """
