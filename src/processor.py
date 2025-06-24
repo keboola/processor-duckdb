@@ -98,7 +98,6 @@ class Component(ComponentBase):
         """
         # Retrieve the token from the environment
         token = os.environ.get('motherduck_token')
-        print(f"token: {token}")
         if not token:
             raise UserException("MotherDuck token could not be retrieved from environment.")
 
