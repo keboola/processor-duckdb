@@ -105,9 +105,7 @@ class Component(ComponentBase):
             print(f"Processing and uploading: {table.name} (local table: {table_name})")
             try:
                 # Read manifest information to determine load strategy
-                print(f"CALLING get_manifest_info for {table.name}")
                 manifest_info = self.get_manifest_info(table)
-                print(f"MANIFEST INFO RESULT: {manifest_info}")
                 
                 # Create local table using existing logic
                 self.create_table(table.name)
@@ -459,15 +457,10 @@ class Component(ComponentBase):
         Returns:
             dict: Dictionary with 'incremental' (bool), 'columns' (list), 'has_id_column' (bool)
         """
-        print(f"HEEEEERE!: Getting manifest info for table: {table.name}")
         try:
             # For sliced tables (directories), the manifest is at the directory level
             # For regular files, the manifest is at the file level
             manifest_path = f"{table.full_path}.manifest"
-            
-            print(f"DEBUG: Looking for manifest at: {manifest_path}")  # Debug logging
-            print(f"DEBUG: Table full_path: {table.full_path}")  # Debug logging
-            print(f"DEBUG: Manifest exists: {os.path.exists(manifest_path)}")  # Debug logging
             
             if os.path.exists(manifest_path):
                 with open(manifest_path, 'r') as f:
@@ -477,7 +470,6 @@ class Component(ComponentBase):
                 columns = manifest_data.get('columns', [])
                 has_id_column = 'id' in columns
                 
-                print(f"DEBUG: Manifest data for {table.name}: incremental={incremental}, columns={columns}, has_id={has_id_column}")
                 logging.debug(f"Manifest for {table.name}: incremental={incremental}, columns={columns}, has_id={has_id_column}")
                 return {
                     'incremental': incremental,
@@ -485,7 +477,6 @@ class Component(ComponentBase):
                     'has_id_column': has_id_column
                 }
             else:
-                print(f"DEBUG: No manifest file found for {table.name} at {manifest_path}, defaulting to full load")
                 logging.warning(f"No manifest file found for {table.name}, defaulting to full load")
                 return {
                     'incremental': False,
@@ -493,7 +484,6 @@ class Component(ComponentBase):
                     'has_id_column': False
                 }
         except Exception as e:
-            print(f"DEBUG: Error reading manifest for {table.name}: {e}")
             logging.error(f"Error reading manifest for {table.name}: {e}")
             return {
                 'incremental': False,
@@ -511,7 +501,6 @@ class Component(ComponentBase):
             csv_path: Path to CSV file(s) to load
             manifest_info: Dictionary with manifest information
         """
-        print(f"LOAD_TABLE_TO_MOTHERDUCK: table={table_name}, manifest_info={manifest_info}")
         table_exists = self.table_exists_in_motherduck(md_con, table_name)
         
         if not manifest_info['incremental']:
