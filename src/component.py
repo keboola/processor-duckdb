@@ -53,12 +53,81 @@ class Component(ComponentBase):
         self._connection = self.init_connection()
         self._in_tables = self.get_input_tables_definitions()
 
-    def run(self):
-
-        if self._config.get(KEY_MODE) == 'advanced':
-            self.advanced_mode()
+    def run(self, run_as_processor=False):
+        """
+        Main run method that can operate in two modes:
+        1. Component mode (default): Runs the original DuckDB component logic
+        2. Processor mode: Uploads data to MotherDuck cloud database
+        
+        Args:
+            run_as_processor (bool): If True, runs as processor (MotherDuck upload mode)
+                                   If False, runs as component (original mode)
+        """
+        if run_as_processor:
+            self.run_processor_mode()
         else:
-            self.simple_mode()
+            # Original component logic
+            if self._config.get(KEY_MODE) == 'advanced':
+                self.advanced_mode()
+            else:
+                self.simple_mode()
+
+    def run_processor_mode(self):
+        """
+        Processor mode: Loads all input tables (CSVs) into MotherDuck using the database name from config.json.
+        Ensures the MotherDuck token is set, then connects and uploads tables.
+        """
+        # Retrieve the token from the environment
+        token = os.environ.get('motherduck_token')
+        if not token:
+            raise UserException("MotherDuck token could not be retrieved from environment.")
+
+        # Get the MotherDuck database name from config
+        database_name = self._config.get("database")
+        if not database_name:
+            raise UserException("Missing 'database' parameter in configuration.")
+
+        # Connect to MotherDuck using the token explicitly in the config
+        try:
+            md_con = duckdb.connect(f"md:{database_name}", config={"motherduck_token": token})
+        except Exception as e:
+            logging.error(f"Failed to connect to MotherDuck: {e}")
+            raise UserException(f"Failed to connect to MotherDuck: {e}")
+
+        # Print the number of input tables and their details for debugging
+        print(f"Number of input tables: {len(self._in_tables)}")
+        for t in self._in_tables:
+            print(f"Table name: {t.name}, path: {t.full_path}")
+
+        # For each input table, use create_table() to handle advanced logic, then upload to MotherDuck
+        for table in self._in_tables:
+            table_name = Path(table.name).stem  # Remove .csv extension for MotherDuck
+            print(f"Processing and uploading: {table.name} (local table: {table_name})")
+            try:
+                self.create_table(table.name)
+                if os.path.isdir(table.full_path):
+                    print(f"Table is sliced: {table.full_path}")
+                    csv_path = os.path.join(table.full_path, '*.csv')
+                else:
+                    csv_path = table.full_path
+
+                # Always drop and reload the table in MotherDuck
+                if self.table_exists_in_motherduck(md_con, table_name):
+                    print(f"Dropping existing table {table_name} in MotherDuck...")
+                    md_con.sql(f"DROP TABLE IF EXISTS {table_name}")
+                print(f"Loading table {table_name} into MotherDuck (full load)...")
+                md_con.sql(f"CREATE TABLE {table_name} AS SELECT * FROM '{csv_path}'")
+                logging.info(f"Table '{table_name}' uploaded to MotherDuck successfully (full load).")
+            except Exception as e:
+                logging.error(f"Failed to process or upload table '{table_name}': {e}")
+                raise UserException(f"Failed to process or upload table '{table_name}' to MotherDuck: {e}")
+
+        # Close the MotherDuck connection
+        md_con.close()
+        logging.info("All tables uploaded to MotherDuck successfully.")
+
+        # Optionally, you can print a message for the user
+        print(f"All input tables have been uploaded to MotherDuck database '{database_name}'.")
 
     def init_connection(self) -> DuckDBPyConnection:
         """
@@ -376,6 +445,41 @@ class Component(ComponentBase):
         else:
             shutil.copy(t.full_path, Path(self.tables_out_path).joinpath(t.name))
 
+    def table_exists_in_motherduck(self, md_con, table_name):
+        """
+        Check if a table exists in the MotherDuck database.
+        Uses the information_schema.tables system view to check for table existence.
+        
+        Args:
+            md_con: MotherDuck connection object
+            table_name: Name of the table to check
+            
+        Returns:
+            bool: True if table exists, False otherwise
+        """
+        try:
+            # Query the information schema to check if the table exists
+            # We check both the table_name and table_schema (defaulting to 'main')
+            schema_name = self._config.get("schema", "main")
+            
+            result = md_con.execute("""
+                SELECT COUNT(*) as table_count 
+                FROM information_schema.tables 
+                WHERE table_name = ? AND table_schema = ?
+            """, [table_name, schema_name]).fetchone()
+            
+            # If count > 0, table exists
+            table_exists = result[0] > 0 if result else False
+            
+            logging.debug(f"Table '{table_name}' existence check in schema '{schema_name}': {table_exists}")
+            return table_exists
+            
+        except Exception as e:
+            # If there's an error checking table existence, log it and assume table doesn't exist
+            # This is safer than assuming it exists and potentially causing data loss
+            logging.warning(f"Error checking if table '{table_name}' exists in MotherDuck: {e}")
+            return False
+
 
 """
         Main entrypoint
@@ -383,8 +487,26 @@ class Component(ComponentBase):
 if __name__ == "__main__":
     try:
         comp = Component()
-        # this triggers the run method by default and is controlled by the configuration.action parameter
-        comp.execute_action()
+        
+        # Check if we should run as processor (MotherDuck mode) or component (original mode)
+        # This can be controlled by:
+        # 1. Environment variable RUN_AS_PROCESSOR=true
+        # 2. Configuration parameter "run_as_processor": true
+        run_as_processor = (
+            os.environ.get('RUN_AS_PROCESSOR', '').lower() == 'true' or
+            comp._config.get('run_as_processor', False)
+        )
+        
+        if run_as_processor:
+            # Run in processor mode (MotherDuck upload)
+            logging.info("Running in processor mode (MotherDuck upload)")
+            comp.run(run_as_processor=True)
+        else:
+            # Run in component mode (original behavior)
+            logging.info("Running in component mode (original behavior)")
+            # this triggers the run method by default and is controlled by the configuration.action parameter
+            comp.execute_action()
+            
     except UserException as exc:
         logging.exception(exc)
         exit(1)

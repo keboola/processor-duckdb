@@ -9,6 +9,7 @@ services:
     environment:
       - KBC_DATADIR=./data
       - motherduck_token=${motherduck_token}
+      - RUN_AS_PROCESSOR=${RUN_AS_PROCESSOR:-true}
   test:
     # Use to run flake8 and unittests checks
     build: .
@@ -18,6 +19,7 @@ services:
     environment:
       - KBC_DATADIR=./data
       - motherduck_token=${motherduck_token}
+      - RUN_AS_PROCESSOR=${RUN_AS_PROCESSOR:-true}
     command:
       - /bin/sh
       - /code/scripts/build_n_test.sh
