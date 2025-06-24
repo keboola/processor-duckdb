@@ -118,19 +118,24 @@ class Component(ComponentBase):
         for t in self._in_tables:
             print(f"Table name: {t.name}, path: {t.full_path}")
 
-        # For each input table, upload the CSV to MotherDuck as a table
+        # For each input table, use create_table() to handle advanced logic, then upload to MotherDuck
         for table in self._in_tables:
-            table_name = table.name
-            csv_path = table.full_path
-            # Add a comment explaining the operation
-            logging.info(f"Uploading table '{table_name}' from '{csv_path}' to MotherDuck database '{database_name}'...")
+            table_name = Path(table.name).stem  # Remove .csv extension for MotherDuck
+            print(f"Processing and uploading: {table.name} (local table: {table_name})")
             try:
-                # This will create the table in MotherDuck and load the CSV data
+                # Use create_table to load the table into local DuckDB (handles slices, patterns, etc.)
+                self.create_table(table.name)
+                # If the table is sliced, use the glob pattern for all CSVs in the directory
+                if os.path.isdir(table.full_path):
+                    print(f"Table is sliced: {table.full_path}")
+                    csv_path = os.path.join(table.full_path, '*.csv')
+                else:
+                    csv_path = table.full_path
                 md_con.sql(f"CREATE TABLE {table_name} AS SELECT * FROM '{csv_path}'")
-                logging.info(f"Table '{table_name}' uploaded successfully.")
+                logging.info(f"Table '{table_name}' uploaded to MotherDuck successfully.")
             except Exception as e:
-                logging.error(f"Failed to upload table '{table_name}': {e}")
-                raise UserException(f"Failed to upload table '{table_name}' to MotherDuck: {e}")
+                logging.error(f"Failed to process or upload table '{table_name}': {e}")
+                raise UserException(f"Failed to process or upload table '{table_name}' to MotherDuck: {e}")
 
         # Close the MotherDuck connection
         md_con.close()
