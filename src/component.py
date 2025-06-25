@@ -104,8 +104,8 @@ class Component(ComponentBase):
             table_name = Path(table.name).stem  # Remove .csv extension for MotherDuck
             print(f"Processing and uploading: {table.name} (local table: {table_name})")
             try:
-                # Read manifest information to determine load strategy
-                manifest_info = self.get_manifest_info(table)
+                # Read load configuration from config.json to determine load strategy
+                load_config = self.get_load_config(table)
                 
                 # Create local table using existing logic
                 self.create_table(table.name)
@@ -117,8 +117,8 @@ class Component(ComponentBase):
                 else:
                     csv_path = table.full_path
 
-                # Load table to MotherDuck based on manifest settings
-                self.load_table_to_motherduck(md_con, table_name, csv_path, manifest_info)
+                # Load table to MotherDuck based on config settings
+                self.load_table_to_motherduck(md_con, table_name, csv_path, load_config)
                 
             except Exception as e:
                 logging.error(f"Failed to process or upload table '{table_name}': {e}")
@@ -447,72 +447,135 @@ class Component(ComponentBase):
         else:
             shutil.copy(t.full_path, Path(self.tables_out_path).joinpath(t.name))
 
-    def get_manifest_info(self, table):
+    def detect_config_type(self):
         """
-        Read manifest file for a table and extract incremental flag and columns.
+        Detect if this is a MotherDuck extractor or writer configuration.
+        
+        Returns:
+            str: 'extractor' or 'writer' or 'unknown'
+        """
+        destination = self._config.get('destination', {})
+        
+        # Check for writer pattern: has columns list with pk fields
+        if 'columns' in destination and isinstance(destination['columns'], list):
+            # Check if any column has 'pk' field (writer pattern)
+            for col in destination['columns']:
+                if isinstance(col, dict) and 'pk' in col:
+                    return 'writer'
+        
+        # Check for extractor pattern: has primary_key field
+        if 'primary_key' in destination:
+            return 'extractor'
+        
+        return 'unknown'
+
+    def get_load_config(self, table):
+        """
+        Get load configuration from config.json for MotherDuck extractor/writer.
         
         Args:
             table: TableDefinition object
             
         Returns:
-            dict: Dictionary with 'incremental' (bool), 'columns' (list), 'has_id_column' (bool)
+            dict: Dictionary with 'incremental' (bool), 'columns' (list), 'primary_key' (list)
         """
         try:
-            # For sliced tables (directories), the manifest is at the directory level
-            # For regular files, the manifest is at the file level
-            manifest_path = f"{table.full_path}.manifest"
+            config_type = self.detect_config_type()
+            destination = self._config.get('destination', {})
             
+            # Get load type (same for both extractor and writer)
+            load_type = destination.get('load_type', 'full_load')
+            is_incremental = load_type == 'incremental_load'
+            
+            # Get manifest columns for sliced tables
+            manifest_columns = self.get_manifest_columns(table)
+            
+            # Get primary key based on config type
+            primary_key = []
+            
+            if config_type == 'extractor':
+                # Extractor: primary_key is directly specified
+                primary_key = destination.get('primary_key', [])
+                logging.debug(f"Extractor config: load_type={load_type}, primary_key={primary_key}")
+                
+            elif config_type == 'writer':
+                # Writer: primary key columns have pk=true
+                columns = destination.get('columns', [])
+                primary_key = [col.get('source_name', '') for col in columns 
+                              if isinstance(col, dict) and col.get('pk', False) and col.get('source_name')]
+                logging.debug(f"Writer config: load_type={load_type}, primary_key={primary_key}")
+                
+            else:
+                # Unknown config type - no primary key deduplication
+                logging.warning(f"Unknown config type, no primary key deduplication available: load_type={load_type}")
+            
+            has_primary_key = len(primary_key) > 0
+            
+            logging.info(f"Load config for {table.name}: incremental={is_incremental}, primary_key={primary_key}")
+            
+            return {
+                'incremental': is_incremental,
+                'columns': manifest_columns,
+                'primary_key': primary_key,
+                'has_primary_key': has_primary_key
+            }
+            
+        except Exception as e:
+            logging.error(f"Error reading load config for {table.name}: {e}")
+            # Fallback to safe defaults
+            manifest_columns = self.get_manifest_columns(table)
+            return {
+                'incremental': False,
+                'columns': manifest_columns,
+                'primary_key': [],
+                'has_primary_key': False
+            }
+
+    def get_manifest_columns(self, table):
+        """
+        Get column names from manifest file (needed for sliced tables without headers).
+        
+        Args:
+            table: TableDefinition object
+            
+        Returns:
+            list: List of column names from manifest
+        """
+        try:
+            manifest_path = f"{table.full_path}.manifest"
             if os.path.exists(manifest_path):
                 with open(manifest_path, 'r') as f:
                     manifest_data = json.load(f)
-                
-                incremental = manifest_data.get('incremental', False)
-                columns = manifest_data.get('columns', [])
-                has_id_column = 'id' in columns
-                
-                logging.debug(f"Manifest for {table.name}: incremental={incremental}, columns={columns}, has_id={has_id_column}")
-                return {
-                    'incremental': incremental,
-                    'columns': columns,
-                    'has_id_column': has_id_column
-                }
+                return manifest_data.get('columns', [])
             else:
-                logging.warning(f"No manifest file found for {table.name}, defaulting to full load")
-                return {
-                    'incremental': False,
-                    'columns': [],
-                    'has_id_column': False
-                }
+                logging.warning(f"No manifest file found for {table.name}")
+                return []
         except Exception as e:
-            logging.error(f"Error reading manifest for {table.name}: {e}")
-            return {
-                'incremental': False,
-                'columns': [],
-                'has_id_column': False
-            }
+            logging.error(f"Error reading manifest columns for {table.name}: {e}")
+            return []
 
-    def load_table_to_motherduck(self, md_con, table_name, csv_path, manifest_info):
+    def load_table_to_motherduck(self, md_con, table_name, csv_path, load_config):
         """
-        Load table to MotherDuck based on incremental settings from manifest.
+        Load table to MotherDuck based on incremental settings from config.json.
         
         Args:
             md_con: MotherDuck connection
             table_name: Name of the target table in MotherDuck
             csv_path: Path to CSV file(s) to load
-            manifest_info: Dictionary with manifest information
+            load_config: Dictionary with load configuration from config.json
         """
         table_exists = self.table_exists_in_motherduck(md_con, table_name)
         
-        if not manifest_info['incremental']:
+        if not load_config['incremental']:
             # Full load: drop and recreate table
             if table_exists:
                 print(f"Dropping existing table {table_name} in MotherDuck (full load)...")
                 md_con.sql(f"DROP TABLE IF EXISTS {table_name}")
             print(f"Loading table {table_name} into MotherDuck (full load)...")
             
-            # Handle sliced tables (CSV files without headers)
-            if '*.csv' in csv_path and manifest_info['columns']:
-                columns = manifest_info['columns']
+            # Handle CSV files without headers (both sliced and regular)
+            if load_config['columns']:
+                columns = load_config['columns']
                 column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
                 md_con.sql(f"CREATE TABLE {table_name} AS SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
             else:
@@ -525,9 +588,9 @@ class Component(ComponentBase):
                 # First time load - create table
                 print(f"Creating new table {table_name} in MotherDuck (incremental - first load)...")
                 
-                # Handle sliced tables (CSV files without headers)
-                if '*.csv' in csv_path and manifest_info['columns']:
-                    columns = manifest_info['columns']
+                # Handle CSV files without headers (both sliced and regular)
+                if load_config['columns']:
+                    columns = load_config['columns']
                     column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
                     md_con.sql(f"CREATE TABLE {table_name} AS SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
                 else:
@@ -535,41 +598,58 @@ class Component(ComponentBase):
                 logging.info(f"Table '{table_name}' created in MotherDuck (incremental - first load).")
             else:
                 # Incremental append
-                if manifest_info['has_id_column']:
-                    # Use 'id' column for deduplication
-                    print(f"Loading table {table_name} into MotherDuck (incremental with deduplication on 'id')...")
+                if load_config['has_primary_key']:
+                    # Use primary key for deduplication
+                    primary_key = load_config['primary_key']
+                    pk_str = ', '.join(primary_key)
+                    print(f"Loading table {table_name} into MotherDuck (incremental with deduplication on '{pk_str}')...")
                     
                     # Create temporary table with new data
                     temp_table = f"{table_name}_temp"
                     md_con.sql(f"DROP TABLE IF EXISTS {temp_table}")
                     
-                    # For sliced tables, we need to specify column names since CSV files don't have headers
-                    if '*.csv' in csv_path and manifest_info['columns']:
-                        # Build column list for CREATE TABLE with proper names
-                        columns = manifest_info['columns']
+                    # Handle CSV files without headers (both sliced and regular)
+                    if load_config['columns']:
+                        columns = load_config['columns']
                         column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
                         md_con.sql(f"CREATE TABLE {temp_table} AS SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
                     else:
                         md_con.sql(f"CREATE TABLE {temp_table} AS SELECT * FROM '{csv_path}'")
                     
-                    # Insert only new records (not existing in target table based on 'id')
-                    md_con.sql(f"""
-                        INSERT INTO {table_name}
-                        SELECT * FROM {temp_table}
-                        WHERE id NOT IN (SELECT id FROM {table_name})
-                    """)
+                    # Build WHERE clause for primary key matching
+                    if len(primary_key) == 1:
+                        # Single column primary key
+                        pk_col = primary_key[0]
+                        where_clause = f"{pk_col} NOT IN (SELECT {pk_col} FROM {table_name})"
+                        md_con.sql(f"""
+                            INSERT INTO {table_name}
+                            SELECT * FROM {temp_table}
+                            WHERE {where_clause}
+                        """)
+                    else:
+                        # Composite primary key
+                        pk_conditions = []
+                        for pk_col in primary_key:
+                            pk_conditions.append(f"temp.{pk_col} = existing.{pk_col}")
+                        pk_join = " AND ".join(pk_conditions)
+                        where_clause = f"NOT EXISTS (SELECT 1 FROM {table_name} existing WHERE {pk_join})"
+                        md_con.sql(f"""
+                            INSERT INTO {table_name}
+                            SELECT * FROM {temp_table} temp
+                            WHERE {where_clause}
+                        """)
                     
                     # Clean up temporary table
                     md_con.sql(f"DROP TABLE {temp_table}")
                     
-                    logging.info(f"Table '{table_name}' updated in MotherDuck (incremental with deduplication).")
+                    logging.info(f"Table '{table_name}' updated in MotherDuck (incremental with deduplication on {pk_str}).")
                 else:
                     # Simple append without deduplication
                     print(f"Loading table {table_name} into MotherDuck (incremental append - no deduplication)...")
                     
-                    # Handle sliced tables (CSV files without headers)
-                    if '*.csv' in csv_path and manifest_info['columns']:
-                        columns = manifest_info['columns']
+                    # Handle CSV files without headers (both sliced and regular)
+                    if load_config['columns']:
+                        columns = load_config['columns']
                         column_aliases = ', '.join([f'column{i} AS {col}' for i, col in enumerate(columns)])
                         md_con.sql(f"INSERT INTO {table_name} SELECT {column_aliases} FROM read_csv('{csv_path}', header=false)")
                     else:
