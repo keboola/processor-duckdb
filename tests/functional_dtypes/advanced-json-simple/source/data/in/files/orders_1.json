@@ -1,0 +1,28 @@
+{
+	"root_el": {
+		"orders": [ {
+				"id": "1",
+				"date": "2018-07-01",
+				"cust_name": "Tom",
+				"order-item": {
+					"price": {
+						"xml_attr_currency": "GBP",
+						"txt_content_": "100"
+					},
+					"item": "Sun Screen"
+				}
+			},{
+				"id": "2",
+				"date": "2018-07-02",
+				"cust_name": "Jerry",
+				"order-item": {
+					"price": {
+						"xml_attr_currency": "GBP",
+						"txt_content_": "100"
+					},
+					"item": "Sun Screen"
+				}
+			}
+		]
+	}
+}
