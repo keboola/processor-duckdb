@@ -1,0 +1,28 @@
+{
+	"root_el": {
+		"orders": [ {
+				"id": "3",
+				"date": "2018-07-03",
+				"cust_name": "Adam",
+				"order-item": {
+					"price": {
+						"xml_attr_currency": "EUR",
+						"txt_content_": "2"
+					},
+					"item": "Juice"
+				}
+			},{
+				"id": "4",
+				"date": "2018-07-04",
+				"cust_name": "Bob",
+				"order-item": {
+					"price": {
+						"xml_attr_currency": "EUR",
+						"txt_content_": "1"
+					},
+					"item": "Water"
+				}
+			}
+		]
+	}
+}

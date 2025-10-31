@@ -234,6 +234,58 @@ A common use case when input tables are not defined, is when a file extractor do
 }
 ```
 
+**Example 4: Load data from JSON**
+
+This configuration demonstrates loading a data from JSON files from input file mappings.
+
+
+```
+{
+    "before": [],
+    "after": [
+        {
+            "definition": {
+                "component": "keboola.processor-duckdb"
+            },
+            "parameters": {
+                "mode": "advanced",
+                "queries":["CREATE VIEW orders AS (SELECT o.id AS id, o.\"date\" AS date_created, o.cust_name AS customer_name, o.\"order-item\".item AS item, o.\"order-item\".price.txt_content_ AS amount, o.\"order-item\".price.xml_attr_currency AS currency\nFROM (SELECT unnest(\"root_el\".\"orders\") AS o FROM read_json('/data/in/files/orders_*.json')));"],
+                "output": ["orders"]
+            }
+        }
+    ]
+}
+```
+
+**Example 5: Load data from JSON and normalizing it to two tables**
+
+This configuration demonstrates loading a data from JSON files from input file mappings.
+
+
+```
+{
+    "before": [],
+    "after": [
+        {
+            "definition": {
+                "component": "keboola.processor-duckdb"
+            },
+            "parameters": {
+                "mode": "advanced",
+                "queries":[
+                  "CREATE VIEW stage AS (SELECT root_el.orders AS orders_list FROM read_json('/code/tests/functional_dtypes/advanced-json-normalized/source/data/in/files/orders_*.json'));",
+                  "CREATE VIEW orders_stage AS (SELECT ord.value ->> 'id' AS order_id, ord.value ->> 'date' AS order_date, ord.value ->> 'cust_name' AS customer_name, ord.value -> 'order-items' AS items_array\nFROM stage, UNNEST(FROM_JSON(orders_list, '[\"JSON\"]')) AS ord(value));",
+                  "CREATE VIEW items AS (SELECT order_id, item_elem.value ->> 'item' AS item_name, item_elem.value -> 'price' ->> 'txt_content_' AS price_amount, item_elem.value -> 'price' ->> 'xml_attr_currency' AS price_currency\nFROM orders_stage, UNNEST(FROM_JSON(items_array, '[\"JSON\"]')) AS item_elem(value));",
+                  "CREATE VIEW orders AS (SELECT order_id, order_date, customer_name FROM orders_stage)"
+                  ],
+                  "output": ["orders", "items"]
+            }
+        }
+    ]
+}
+```
+
+
 More configuration examples for both modes can be found in the [tests directory](../tests/) (always inside source/data/config.json).
 
 # Local Debugging
