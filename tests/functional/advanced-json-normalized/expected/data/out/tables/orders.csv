@@ -1,0 +1,5 @@
+order_id,order_date,customer_name
+"1","2018-07-01","Tom"
+"2","2018-07-02","Jerry"
+"3","2018-07-03","Adam"
+"4","2018-07-04","Bob"

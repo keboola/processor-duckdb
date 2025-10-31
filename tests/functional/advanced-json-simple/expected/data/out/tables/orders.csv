@@ -1,0 +1,5 @@
+id,date_created,customer_name,item,amount,currency
+"1","2018-07-01","Tom","Sun Screen","100","GBP"
+"2","2018-07-02","Jerry","Sun Screen","100","GBP"
+"3","2018-07-03","Adam","Juice","2","EUR"
+"4","2018-07-04","Bob","Water","1","EUR"

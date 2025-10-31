@@ -1,0 +1,13 @@
+{
+  "parameters":{
+                "mode": "advanced",
+                "queries":["CREATE VIEW orders AS (SELECT o.id AS id, o.\"date\" AS date_created, o.cust_name AS customer_name, o.\"order-item\".item AS item, o.\"order-item\".price.txt_content_ AS amount, o.\"order-item\".price.xml_attr_currency AS currency\nFROM (SELECT unnest(\"root_el\".\"orders\") AS o FROM read_json('/code/tests/functional_dtypes/advanced-json-simple/source/data/in/files/orders_*.json')));"],
+                "output": ["orders"]
+            },
+  "image_parameters": {
+  },
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}
