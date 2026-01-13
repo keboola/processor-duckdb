@@ -6,7 +6,6 @@ from csv import DictReader
 from pathlib import Path
 
 import duckdb
-from duckdb.duckdb import DuckDBPyConnection
 from keboola.component import ComponentBase, UserException
 from keboola.component.dao import TableDefinition, SupportedDataTypes, BaseType, ColumnDefinition, TableMetadata
 import fnmatch
@@ -60,7 +59,7 @@ class Component(ComponentBase):
         else:
             self.simple_mode()
 
-    def init_connection(self) -> DuckDBPyConnection:
+    def init_connection(self) -> duckdb.DuckDBPyConnection:
         """
                 Returns connection to temporary DuckDB database
                 """
@@ -235,7 +234,10 @@ class Component(ComponentBase):
     def create_table(self, input_table_config: Union[dict, str]) -> None:
         table_params = self.get_in_table_params(input_table_config)
 
-        delimiter = table_params.table_config.get('delimiter') or table_params.table.delimiter or ','
+        delimiter = table_params.table_config.get("delimiter")
+        if delimiter is None:
+            delimiter = table_params.table.delimiter if table_params.table else ","
+
         quote_char = table_params.table_config.get('quotechar')
         has_header = table_params.table_config.get('has_header') or table_params.has_header
         header = table_params.table_config.get('column_names') or table_params.header or None
