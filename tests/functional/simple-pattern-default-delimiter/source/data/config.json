@@ -4,7 +4,7 @@
     "queries": [
       {
         "input": {
-          "input_pattern": "/data/in/tables/*.csv",
+          "input_pattern": "/code/tests/functional/simple-pattern-default-delimiter/source/data/in/tables/*.csv",
           "duckdb_destination": "in_table"
         },
         "query": "SELECT *, 2 as new_column FROM in_table",
