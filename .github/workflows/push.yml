@@ -70,11 +70,10 @@ jobs:
           target_image: ${{ env.KBC_DEVELOPERPORTAL_APP}}
           tag_as_latest: true
 
-      - name: Run tests
+      - name: Run Tests
         run: |
-          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }} flake8 . --config=flake8.cfg
           echo "Running unit-tests..."
-          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }} python -m unittest discover
+          docker compose up test --exit-code-from test
 
   tests-kbc:
     env:

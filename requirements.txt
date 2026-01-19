@@ -1,6 +1,0 @@
-keboola.component==1.6.3
-keboola.utils==1.1.0
-mock==5.1.0
-freezegun==1.5.1
-https://bitbucket.org/kds_consulting_team/datadirtest/get/1.8.7.zip#egg=datadirtest
-duckdb==1.2.1

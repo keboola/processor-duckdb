@@ -1,0 +1,22 @@
+{
+  "parameters": {
+    "mode": "simple",
+    "queries": [
+      {
+        "input": {
+          "input_pattern": "/code/tests/data_pattern/*.csv",
+          "duckdb_destination": "in_table"
+        },
+        "query": "SELECT *, 2 as new_column FROM in_table",
+        "output": {
+          "kbc_destination": "out_table"
+        }
+      }
+    ]
+  },
+  "image_parameters": {},
+  "action": "run",
+  "shared_code_row_ids": [],
+  "storage": {},
+  "authorization": {}
+}
