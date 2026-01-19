@@ -3,7 +3,7 @@
     "mode": "advanced",
     "input": [
       {
-        "input_pattern": "/code/tests/functional_dtypes/advanced-pattern-default-delimiter/source/data/in/tables/*.csv",
+        "input_pattern": "/code/tests/data_pattern/*.csv",
         "duckdb_destination": "in_table"
       }
     ],
