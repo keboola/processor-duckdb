@@ -4,8 +4,8 @@
                 "queries":[
                   "CREATE VIEW stage AS (SELECT root_el.orders AS orders_list FROM read_json('/code/tests/functional_dtypes/advanced-json-normalized/source/data/in/files/orders_*.json'));",
                   "CREATE VIEW orders_stage AS (SELECT ord.value ->> 'id' AS order_id, ord.value ->> 'date' AS order_date, ord.value ->> 'cust_name' AS customer_name, ord.value -> 'order-items' AS items_array\nFROM stage, UNNEST(FROM_JSON(orders_list, '[\"JSON\"]')) AS ord(value));",
-                  "CREATE VIEW items AS (SELECT order_id, item_elem.value ->> 'item' AS item_name, item_elem.value -> 'price' ->> 'txt_content_' AS price_amount, item_elem.value -> 'price' ->> 'xml_attr_currency' AS price_currency\nFROM orders_stage, UNNEST(FROM_JSON(items_array, '[\"JSON\"]')) AS item_elem(value));",
-                  "CREATE VIEW orders AS (SELECT order_id, order_date, customer_name FROM orders_stage)"],
+                  "CREATE VIEW items AS (SELECT order_id, item_elem.value ->> 'item' AS item_name, item_elem.value -> 'price' ->> 'txt_content_' AS price_amount, item_elem.value -> 'price' ->> 'xml_attr_currency' AS price_currency\nFROM orders_stage, UNNEST(FROM_JSON(items_array, '[\"JSON\"]')) AS item_elem(value) ORDER BY 1, 2 DESC);",
+                  "CREATE VIEW orders AS (SELECT order_id, order_date, customer_name FROM orders_stage ORDER BY 1)"],
                 "output": ["orders", "items"]
             },
   "image_parameters": {

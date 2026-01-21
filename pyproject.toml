@@ -1,16 +1,16 @@
 [project]
 name = "processor-duckdb"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = "~=3.13.0"
 dependencies = [
     "datadirtest",
-    "duckdb==1.2.1",
+    "duckdb==1.4.3",
     "flake8>=7.3.0",
-    "freezegun==1.5.1",
-    "keboola-component==1.6.3",
-    "keboola-utils==1.1.0",
-    "mock==5.1.0",
+    "freezegun>=1.5.1",
+    "keboola-component>=1.6.3",
+    "keboola-utils>=1.1.0",
+    "mock>=5.1.0",
 ]
 
 [tool.uv.sources]
-datadirtest = { url = "https://bitbucket.org/kds_consulting_team/datadirtest/get/1.8.7.zip" }
+datadirtest = { git = "https://github.com/keboola/datadirtest.git" }

@@ -1,17 +1,24 @@
+import fnmatch
 import json
 import logging
 import os
 import shutil
+import warnings
+from collections import OrderedDict
 from csv import DictReader
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Union
 
 import duckdb
 from keboola.component import ComponentBase, UserException
-from keboola.component.dao import TableDefinition, SupportedDataTypes, BaseType, ColumnDefinition, TableMetadata
-import fnmatch
-from typing import Union
-from collections import OrderedDict
-from dataclasses import dataclass
+from keboola.component.dao import BaseType, ColumnDefinition, SupportedDataTypes, TableDefinition, TableMetadata
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*deprecated method add_column_data_type.*",
+    category=DeprecationWarning,
+)
 
 KEY_MODE = "mode"
 KEY_IN_TABLES = "input"
@@ -116,10 +123,9 @@ class Component(ComponentBase):
                 if fnmatch.fnmatch(table.name, pattern):
                     matched_tables.append(t)
 
-        for t in [tb for tb in self._in_tables if tb not in matched_tables]:
+        for t in [tb for tb in self._in_tables if tb.name not in matched_tables]:
             out_table = self.create_out_table_definition(t.name)
             self.move_table_to_out(t, out_table)
-            self.move_files()
 
         for q in queries:
             self._connection.execute(q)
