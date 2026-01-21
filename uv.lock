@@ -151,10 +151,10 @@ requires-dist = [
     { name = "datadirtest", git = "https://github.com/keboola/datadirtest.git" },
     { name = "duckdb", specifier = "==1.4.3" },
     { name = "flake8", specifier = ">=7.3.0" },
-    { name = "freezegun", specifier = "==1.5.1" },
-    { name = "keboola-component", specifier = "==1.6.3" },
-    { name = "keboola-utils", specifier = "==1.1.0" },
-    { name = "mock", specifier = "==5.1.0" },
+    { name = "freezegun", specifier = ">=1.5.1" },
+    { name = "keboola-component", specifier = ">=1.6.3" },
+    { name = "keboola-utils", specifier = ">=1.1.0" },
+    { name = "mock", specifier = ">=5.1.0" },
 ]
 
 [[package]]

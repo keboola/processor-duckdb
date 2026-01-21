@@ -1,19 +1,18 @@
+import fnmatch
 import json
 import logging
 import os
 import shutil
+import warnings
+from collections import OrderedDict
 from csv import DictReader
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Union
 
 import duckdb
 from keboola.component import ComponentBase, UserException
-from keboola.component.dao import TableDefinition, SupportedDataTypes, BaseType, ColumnDefinition, TableMetadata
-import fnmatch
-from typing import Union
-from collections import OrderedDict
-from dataclasses import dataclass
-
-import warnings
+from keboola.component.dao import BaseType, ColumnDefinition, SupportedDataTypes, TableDefinition, TableMetadata
 
 warnings.filterwarnings(
     "ignore",
