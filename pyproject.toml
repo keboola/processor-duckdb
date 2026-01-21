@@ -1,7 +1,7 @@
 [project]
 name = "processor-duckdb"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = "~=3.13.0"
 dependencies = [
     "datadirtest",
     "duckdb==1.4.3",
@@ -13,4 +13,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-datadirtest = { url = "https://bitbucket.org/kds_consulting_team/datadirtest/get/1.8.7.zip" }
+datadirtest = { git = "https://github.com/keboola/datadirtest.git" }
