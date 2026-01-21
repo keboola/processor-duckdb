@@ -116,10 +116,9 @@ class Component(ComponentBase):
                 if fnmatch.fnmatch(table.name, pattern):
                     matched_tables.append(t)
 
-        for t in [tb for tb in self._in_tables if tb not in matched_tables]:
+        for t in [tb for tb in self._in_tables if tb.name not in matched_tables]:
             out_table = self.create_out_table_definition(t.name)
             self.move_table_to_out(t, out_table)
-            self.move_files()
 
         for q in queries:
             self._connection.execute(q)
