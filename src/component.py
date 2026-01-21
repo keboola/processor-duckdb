@@ -13,6 +13,14 @@ from typing import Union
 from collections import OrderedDict
 from dataclasses import dataclass
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*deprecated method add_column_data_type.*",
+    category=DeprecationWarning,
+)
+
 KEY_MODE = "mode"
 KEY_IN_TABLES = "input"
 KEY_QUERIES = "queries"
