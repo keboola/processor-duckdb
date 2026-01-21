@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "datadirtest",
-    "duckdb==1.2.1",
+    "duckdb==1.4.3",
     "flake8>=7.3.0",
     "freezegun==1.5.1",
     "keboola-component==1.6.3",

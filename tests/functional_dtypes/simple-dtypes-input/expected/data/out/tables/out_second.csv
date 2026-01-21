@@ -1,4 +1,4 @@
-STRING,INTEGER,NUMERIC,FLOAT,BOOLEAN,DATE,TIMESTAMP,/table.parquet,new_column
+"STRING","INTEGER","NUMERIC","FLOAT","BOOLEAN","DATE","TIMESTAMP","/table.parquet","new_column"
 "two","2","2.2","2.22","false","2023-02-01","2023-02-01 12:00:00","/table.parquet","2"
 "three","3","3.3","3.33","true","2023-03-01","2023-03-01 12:00:00","/table.parquet","2"
 "four","4","4.4","4.44","false","2023-04-01","2023-04-01 12:00:00","/table.parquet","2"
