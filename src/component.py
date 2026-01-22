@@ -153,7 +153,7 @@ class Component(ComponentBase):
             try:
                 self._connection.execute(f'''COPY "{table_params.table_name}" TO "{out_table.full_path}"
                                             (HEADER, DELIMITER ',', FORCE_QUOTE *)''')
-            except duckdb.duckdb.ConversionException as e:
+            except duckdb.ConversionException as e:
                 raise UserException(f"Error during query execution: {e}")
 
             self.write_manifest(out_table)
@@ -206,7 +206,7 @@ class Component(ComponentBase):
             self._connection.execute(
                 f'COPY ({q["query"]}) TO "{out_table.full_path}"(HEADER, DELIMITER ",", FORCE_QUOTE *)'
             )
-        except duckdb.duckdb.ConversionException as e:
+        except duckdb.ConversionException as e:
             raise UserException(f"Error during query execution: {e}")
 
         self.write_manifest(out_table)
@@ -270,7 +270,7 @@ class Component(ComponentBase):
             )
 
             logging.debug(f"Table {table_params.destination_table_name} created.")
-        except duckdb.duckdb.IOException:
+        except duckdb.IOException:
             logging.error(f"No files found that match the pattern {table_params.path}")
             exit(0)
 
